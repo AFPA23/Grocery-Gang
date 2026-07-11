@@ -363,6 +363,129 @@
             background: #ffebee;
         }
 
+        /* Map View */
+        .store-map {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+            aspect-ratio: 2 / 1;
+            background: white;
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 16px;
+        }
+
+        .map-cell {
+            border-radius: 6px;
+            padding: 4px;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            font-size: 10px;
+            font-weight: 600;
+            color: #333;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .map-cell-empty {
+            background: #f0f0f0;
+            border: 1px dashed #ddd;
+        }
+
+        .map-cell-zone {
+            border: 2px solid rgba(0,0,0,0.15);
+        }
+
+        .map-cell-label {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            text-align: center;
+            line-height: 1.2;
+            margin-top: 2px;
+        }
+
+        .map-item-dot {
+            font-size: 7px;
+            background: rgba(255,255,255,0.85);
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-top: 1px;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .map-unplaced {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .map-unplaced-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gray);
+            margin-bottom: 8px;
+        }
+
+        .map-unplaced-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .map-unplaced-tag {
+            font-size: 12px;
+            background: var(--light-gray);
+            padding: 4px 10px;
+            border-radius: 4px;
+            color: var(--text);
+        }
+
+        .map-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--gray);
+        }
+
+        .map-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .map-legend-swatch {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+
+        @media (max-width: 500px) {
+            .store-map {
+                gap: 2px;
+                padding: 4px;
+            }
+            .map-cell-label {
+                font-size: 7px;
+            }
+            .map-item-dot {
+                font-size: 6px;
+                padding: 1px 2px;
+            }
+        }
+
         .hidden {
             display: none;
         }
@@ -381,6 +504,7 @@
         <div class="view-toggle">
             <button class="view-btn active" data-view="list">List</button>
             <button class="view-btn" data-view="section">Sections</button>
+            <button class="view-btn" data-view="map">Map</button>
             <button class="view-btn" data-view="history">History</button>
         </div>
     </header>
@@ -395,6 +519,7 @@
 
     <div id="list-view"></div>
     <div id="section-view" class="hidden"></div>
+    <div id="map-view" class="hidden"></div>
     <div id="history-view" class="hidden"></div>
 
     <script>
@@ -544,6 +669,7 @@
         const detectedSectionEl = document.getElementById('detected-section');
         const listView = document.getElementById('list-view');
         const sectionView = document.getElementById('section-view');
+        const mapView = document.getElementById('map-view');
         const historyView = document.getElementById('history-view');
         const viewBtns = document.querySelectorAll('.view-btn');
 
@@ -628,6 +754,7 @@
             localStorage.setItem('purchaseHistory', JSON.stringify(purchaseHistory));
             renderList();
             renderSections();
+            renderMap();
             renderHistory();
         }
 
@@ -819,6 +946,168 @@
             });
         }
 
+        const MAP_ZONES = [
+            {
+                id: 'produce',
+                label: 'Produce',
+                color: '#4caf50',
+                cols: [8], rows: [3, 4],
+                keywords: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'potato', 'carrot',
+                    'broccoli', 'spinach', 'kale', 'celery', 'cucumber', 'avocado', 'garlic',
+                    'ginger', 'lemon', 'lime', 'orange', 'grapes', 'strawberry', 'blueberry',
+                    'raspberry', 'cilantro', 'parsley', 'basil', 'zucchini', 'squash', 'cabbage',
+                    'cauliflower', 'corn', 'green beans', 'peas', 'asparagus', 'eggplant',
+                    'melon', 'watermelon', 'pineapple', 'mango', 'peach', 'plum', 'pear', 'kiwi',
+                    'mushroom', 'sweet potato', 'bell pepper', 'jalapeno', 'beet', 'turnip',
+                    'parsnip', 'herb', 'salad', 'sprouts', 'brussels sprouts']
+            },
+            {
+                id: 'italian',
+                label: 'Italian',
+                color: '#e91e63',
+                cols: [8], rows: [1, 2],
+                keywords: ['mozzarella', 'tortellini', 'pesto', 'prosciutto', 'parmesan',
+                    'parmigiano', 'asiago', 'ricotta', 'provolone', 'salame', 'bruschetta',
+                    'ciabatta', 'focaccia', 'risotto', 'polenta', 'cannoli', 'marinara',
+                    'alfredo', 'carbonara', 'ravioli', 'manicotti', 'lasagna', 'spaghetti',
+                    'penne', 'rigatoni', 'fettuccine', 'linguine', 'angel hair']
+            },
+            {
+                id: 'frozen',
+                label: 'Frozen',
+                color: '#2196f3',
+                cols: [1, 2], rows: [2, 3, 4],
+                keywords: ['frozen', 'popsicle', 'popsicles', 'ice cream', 'frozen dinner',
+                    'frozen pizza', 'frozen vegetable', 'frozen vegetables', 'frozen fruit',
+                    'frozen fruits', 'frozen chicken nuggets', 'frozen fries', 'frozen waffle',
+                    'frozen burrito', 'frozen berry', 'tv dinner', 'frozen meal', 'frozen meals',
+                    'frozen yogurt', 'frozen broccoli', 'frozen spinach']
+            },
+            {
+                id: 'milk',
+                label: 'Milk & Cream',
+                color: '#00bcd4',
+                cols: [1, 2], rows: [1],
+                keywords: ['milk', 'soy milk', 'almond milk', 'oat milk', 'coconut milk',
+                    'cream cheese', 'half and half', 'heavy cream', 'whipped cream', 'buttermilk',
+                    'condensed milk', 'evaporated milk', 'lactose free milk', 'chocolate milk']
+            },
+            {
+                id: 'juice_yogurt',
+                label: 'Juice & Yogurt',
+                color: '#ff9800',
+                cols: [3, 4, 5], rows: [1],
+                keywords: ['orange juice', 'apple juice', 'grape juice', 'cranberry juice',
+                    'yogurt', 'yogurt pouch', 'yogurt pouches', 'yogurt tub', 'yogurt tubs',
+                    'kefir', 'juice', 'juice box', 'juice boxes', 'greek yogurt', 'drinkable yogurt',
+                    'fruit juice', 'lemonade', 'iced tea']
+            }
+        ];
+
+        function getMapZoneForItem(name) {
+            const lower = name.toLowerCase().trim();
+            for (const zone of MAP_ZONES) {
+                for (const kw of zone.keywords) {
+                    if (lower.includes(kw)) return zone;
+                }
+            }
+            return null;
+        }
+
+        function renderMap() {
+            mapView.innerHTML = '';
+
+            const grid = document.createElement('div');
+            grid.className = 'store-map';
+
+            const zoneColors = {};
+            MAP_ZONES.forEach(z => {
+                z.cols.forEach(c => z.rows.forEach(r => {
+                    zoneColors[`${c}-${r}`] = z;
+                }));
+            });
+
+            const itemMap = {};
+            items.forEach(item => {
+                const zone = getMapZoneForItem(item.name);
+                const key = zone ? `${zone.cols[0]}-${zone.rows[0]}` : 'unplaced';
+                if (!itemMap[key]) itemMap[key] = [];
+                itemMap[key].push(item);
+            });
+
+            for (let r = 1; r <= 4; r++) {
+                for (let c = 1; c <= 8; c++) {
+                    const cell = document.createElement('div');
+                    const key = `${c}-${r}`;
+                    const zone = zoneColors[key];
+
+                    if (zone) {
+                        const isFirst = c === zone.cols[0] && r === zone.rows[0];
+                        cell.className = 'map-cell map-cell-zone';
+                        cell.style.background = zone.color + '30';
+                        cell.style.borderColor = zone.color;
+
+                        if (isFirst) {
+                            const label = document.createElement('div');
+                            label.className = 'map-cell-label';
+                            label.style.color = zone.color;
+                            label.textContent = zone.label;
+                            cell.appendChild(label);
+                        }
+
+                        const zoneKey = `${zone.cols[0]}-${zone.rows[0]}`;
+                        const zoneItems = itemMap[zoneKey] || [];
+                        zoneItems.forEach(item => {
+                            if (!item.completed) {
+                                const dot = document.createElement('div');
+                                dot.className = 'map-item-dot';
+                                dot.textContent = '• ' + item.name;
+                                cell.appendChild(dot);
+                            }
+                        });
+                    } else {
+                        cell.className = 'map-cell map-cell-empty';
+                    }
+
+                    grid.appendChild(cell);
+                }
+            }
+
+            mapView.appendChild(grid);
+
+            // Unplaced items
+            const unplaced = items.filter(item => {
+                return !item.completed && !getMapZoneForItem(item.name);
+            });
+
+            if (unplaced.length > 0) {
+                const box = document.createElement('div');
+                box.className = 'map-unplaced';
+                box.innerHTML = `<div class="map-unplaced-title">Unplaced Items (no map zone)</div>`;
+                const wrap = document.createElement('div');
+                wrap.className = 'map-unplaced-items';
+                unplaced.forEach(item => {
+                    const tag = document.createElement('span');
+                    tag.className = 'map-unplaced-tag';
+                    tag.textContent = item.name;
+                    wrap.appendChild(tag);
+                });
+                box.appendChild(wrap);
+                mapView.appendChild(box);
+            }
+
+            // Legend
+            const legend = document.createElement('div');
+            legend.className = 'map-legend';
+            MAP_ZONES.forEach(z => {
+                const item = document.createElement('span');
+                item.className = 'map-legend-item';
+                item.innerHTML = `<span class="map-legend-swatch" style="background:${z.color}"></span>${z.label}`;
+                legend.appendChild(item);
+            });
+            mapView.appendChild(legend);
+        }
+
         // View toggle
         viewBtns.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -827,11 +1116,14 @@
                 currentView = btn.dataset.view;
                 listView.classList.add('hidden');
                 sectionView.classList.add('hidden');
+                mapView.classList.add('hidden');
                 historyView.classList.add('hidden');
                 if (currentView === 'list') {
                     listView.classList.remove('hidden');
                 } else if (currentView === 'section') {
                     sectionView.classList.remove('hidden');
+                } else if (currentView === 'map') {
+                    mapView.classList.remove('hidden');
                 } else {
                     historyView.classList.remove('hidden');
                 }
@@ -841,6 +1133,7 @@
         // Initial render
         renderList();
         renderSections();
+        renderMap();
         renderHistory();
     </script>
 </body>
