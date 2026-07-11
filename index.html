@@ -605,7 +605,7 @@
     <div id="section-view" class="hidden"></div>
     <div id="map-view" class="hidden"></div>
     <div id="history-view" class="hidden"></div>
-    <div id="toast" class="toast">Fine, I added it.</div>
+    <div id="toast" class="toast"></div>
 
     <script>
         const ITEM_SECTION_MAP = {
@@ -769,10 +769,25 @@
             "Other"
         ];
 
+        const messages = [
+            "Fine, I added it.",
+            "Should be saved, I think.",
+            "Right away, your highness.",
+            "Mmhmm.",
+            "I'll add it in a minute.",
+            "Is that good for you?",
+            "Is this my entire purpose? Oh my god...",
+            "Very unique taste.",
+            "Remember to add tortellini!",
+            "Probably should pick up some cat toys too.",
+            "Add some fun stuff, yeesh."
+        ];
+
         let toastTimer;
 
         function showToast() {
             const t = document.getElementById('toast');
+            t.textContent = messages[Math.floor(Math.random() * messages.length)];
             clearTimeout(toastTimer);
             t.classList.remove('show');
             void t.offsetWidth;
