@@ -369,7 +369,6 @@
             grid-template-columns: repeat(8, 1fr);
             grid-template-rows: repeat(4, 1fr);
             gap: 4px;
-            max-width: 450px;
             aspect-ratio: 2 / 1;
             background: white;
             padding: 8px;
@@ -462,10 +461,10 @@
             display: grid;
             grid-template-columns: 24px repeat(8, 1fr);
             gap: 4px;
-            max-width: 450px;
             width: 100%;
             padding: 0 8px;
             margin-bottom: 2px;
+            box-sizing: border-box;
         }
 
         .map-col-label {
@@ -478,7 +477,6 @@
         .map-row-wrap {
             display: flex;
             gap: 4px;
-            max-width: 450px;
             width: 100%;
         }
 
@@ -536,9 +534,6 @@
         }
 
         @media (max-width: 500px) {
-            .store-map, .map-col-labels, .map-row-wrap {
-                max-width: 100%;
-            }
             .store-map {
                 gap: 2px;
                 padding: 4px;
