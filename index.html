@@ -1009,19 +1009,10 @@
 
         const MAP_ZONES = [
             {
-                id: 'bakery',
-                label: 'Bakery',
-                color: '#ffcc80',
-                cols: ['A', 'B'], rows: [1],
-                keywords: ['bread', 'baguette', 'croissant', 'muffin', 'donut', 'cake', 'cookie',
-                    'pie', 'pastry', 'loaf', 'sourdough', 'ciabatta', 'focaccia', 'brioche',
-                    'danish', 'scone', 'biscotti', 'turnover', 'bagel', 'english muffin']
-            },
-            {
                 id: 'frozen',
                 label: 'Frozen',
                 color: '#2196f3',
-                cols: ['A'], rows: [2, 3, 4],
+                cols: ['A'], rows: [1, 2, 3],
                 keywords: ['frozen', 'popsicle', 'popsicles', 'ice cream', 'frozen dinner',
                     'frozen pizza', 'frozen vegetable', 'frozen vegetables', 'frozen fruit',
                     'frozen fruits', 'frozen chicken nuggets', 'frozen fries', 'frozen waffle',
@@ -1032,7 +1023,7 @@
                 id: 'waffles_pbj',
                 label: 'Waffles & PB&J',
                 color: '#8d6e63',
-                cols: ['B'], rows: [2],
+                cols: ['B'], rows: [1],
                 keywords: ['waffle', 'pancake mix', 'pancake', 'french toast', 'peanut butter',
                     'jam', 'jelly', 'nutella', 'fluff', 'marshmallow fluff', 'honey', 'syrup',
                     'maple syrup', 'pb&j', 'pbj']
@@ -1041,9 +1032,18 @@
                 id: 'bread',
                 label: 'Bread',
                 color: '#d7ccc8',
-                cols: ['B'], rows: [3, 4],
-                keywords: ['tortilla', 'pita', 'naan', 'roll', 'bun', 'rye bread', 'wheat bread',
+                cols: ['B'], rows: [2, 3],
+                keywords: ['bread', 'tortilla', 'pita', 'naan', 'roll', 'bun', 'rye bread', 'wheat bread',
                     'white bread', 'pumpernickel']
+            },
+            {
+                id: 'bakery',
+                label: 'Bakery',
+                color: '#ffcc80',
+                cols: ['A', 'B'], rows: [4],
+                keywords: ['baguette', 'croissant', 'muffin', 'donut', 'cake', 'cookie',
+                    'pie', 'pastry', 'loaf', 'sourdough', 'ciabatta', 'focaccia', 'brioche',
+                    'danish', 'scone', 'biscotti', 'turnover', 'bagel', 'english muffin']
             },
             {
                 id: 'juice_yogurt',
