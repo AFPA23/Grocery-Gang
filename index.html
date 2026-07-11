@@ -1009,32 +1009,48 @@
 
         const MAP_ZONES = [
             {
+                id: 'milk',
+                label: 'Milk',
+                color: '#00bcd4',
+                cols: ['A'], rows: [1],
+                keywords: ['milk', 'soy milk', 'almond milk', 'oat milk', 'chocolate milk',
+                    'lactose free milk', 'evaporated milk', 'condensed milk']
+            },
+            {
+                id: 'cream_cheese',
+                label: 'Cream Cheese',
+                color: '#4dd0e1',
+                cols: ['B'], rows: [1],
+                keywords: ['cream cheese', 'neufchatel']
+            },
+            {
+                id: 'eggs_cheese',
+                label: 'Eggs & Cheese',
+                color: '#fff176',
+                cols: ['A'], rows: [2],
+                keywords: ['egg', 'eggs', 'cheddar', 'mozzarella', 'swiss', 'provolone',
+                    'american cheese', 'cheese slice', 'cheese slices', 'shredded cheese',
+                    'cheese block', 'cheese stick', 'string cheese', 'colby jack', 'pepper jack',
+                    'monterey jack', 'muenster', 'havarti', 'gouda']
+            },
+            {
                 id: 'frozen',
                 label: 'Frozen',
                 color: '#2196f3',
-                cols: ['A'], rows: [1, 2, 3],
+                cols: ['A'], rows: [3],
                 keywords: ['frozen', 'popsicle', 'popsicles', 'ice cream', 'frozen dinner',
                     'frozen pizza', 'frozen vegetable', 'frozen vegetables', 'frozen fruit',
                     'frozen fruits', 'frozen chicken nuggets', 'frozen fries', 'frozen waffle',
                     'frozen burrito', 'frozen berry', 'frozen meal', 'frozen meals',
-                    'frozen yogurt', 'frozen broccoli', 'frozen spinach']
-            },
-            {
-                id: 'waffles_pbj',
-                label: 'Waffles & PB&J',
-                color: '#8d6e63',
-                cols: ['B'], rows: [1],
-                keywords: ['waffle', 'pancake mix', 'pancake', 'french toast', 'peanut butter',
-                    'jam', 'jelly', 'nutella', 'fluff', 'marshmallow fluff', 'honey', 'syrup',
-                    'maple syrup', 'pb&j', 'pbj']
+                    'frozen yogurt', 'frozen broccoli', 'frozen spinach', 'tv dinner']
             },
             {
                 id: 'bread',
                 label: 'Bread',
                 color: '#d7ccc8',
-                cols: ['B'], rows: [2, 3],
-                keywords: ['bread', 'tortilla', 'pita', 'naan', 'roll', 'bun', 'rye bread', 'wheat bread',
-                    'white bread', 'pumpernickel']
+                cols: ['B'], rows: [3],
+                keywords: ['bread', 'tortilla', 'pita', 'naan', 'roll', 'bun', 'rye bread',
+                    'wheat bread', 'white bread', 'pumpernickel']
             },
             {
                 id: 'bakery',
@@ -1046,26 +1062,52 @@
                     'danish', 'scone', 'biscotti', 'turnover', 'bagel', 'english muffin']
             },
             {
-                id: 'juice_yogurt',
-                label: 'Juice & Yogurt',
+                id: 'orange_juice',
+                label: 'Orange Juice',
                 color: '#ff9800',
-                cols: ['C', 'D', 'E'], rows: [1],
-                keywords: ['orange juice', 'apple juice', 'grape juice', 'cranberry juice',
-                    'yogurt', 'yogurt pouch', 'yogurt pouches', 'yogurt tub', 'yogurt tubs',
-                    'kefir', 'juice', 'juice box', 'juice boxes', 'greek yogurt', 'drinkable yogurt',
-                    'fruit juice', 'lemonade', 'iced tea']
+                cols: ['C'], rows: [1],
+                keywords: ['orange juice', 'oj']
             },
             {
-                id: 'pretzels_snacks',
-                label: 'Snacks & Cereals',
+                id: 'smol_yogurt',
+                label: 'Smol Yogurt',
+                color: '#ffb74d',
+                cols: ['D'], rows: [1],
+                keywords: ['yogurt pouch', 'yogurt pouches', 'drinkable yogurt', 'yogurt tube',
+                    'yogurt tubes', 'go-gurt', 'baby yogurt', 'kids yogurt']
+            },
+            {
+                id: 'tubby_yogurt',
+                label: 'Tubby Yogurt',
+                color: '#ffa726',
+                cols: ['E'], rows: [1],
+                keywords: ['yogurt', 'yogurt tub', 'yogurt tubs', 'greek yogurt', 'plain yogurt',
+                    'vanilla yogurt', 'large yogurt']
+            },
+            {
+                id: 'bars',
+                label: 'Bars',
                 color: '#a1887f',
-                cols: ['E'], rows: [2, 3, 4],
-                keywords: ['pretzel', 'pretzels', 'snack', 'snacks', 'chip', 'chips', 'cracker',
-                    'crackers', 'popcorn', 'granola bar', 'protein bar', 'cereal', 'oatmeal',
-                    'granola', 'breakfast bar', 'nutrigrain', 'nature valley', 'clif bar',
-                    'kind bar', 'rice krispies', 'cheerios', 'frosted flakes', 'raisin bran',
-                    'corn flakes', 'tortilla chip', 'tortilla chips', 'pita chip', 'pita chips',
-                    'cheez-it', 'cheezits', 'goldfish']
+                cols: ['E'], rows: [2],
+                keywords: ['granola bar', 'protein bar', 'breakfast bar', 'nutrigrain',
+                    'nature valley', 'clif bar', 'kind bar', 'granola', 'bar']
+            },
+            {
+                id: 'wheaties',
+                label: 'Wheaties',
+                color: '#bcaaa4',
+                cols: ['E'], rows: [3],
+                keywords: ['wheaties', 'shredded wheat', 'wheat cereal', 'raisin bran',
+                    'bran flakes', 'grape nuts', 'cream of wheat', 'oatmeal', 'cereal']
+            },
+            {
+                id: 'cheerios_foofy',
+                label: 'Cheerios & Foofy',
+                color: '#ef9a9a',
+                cols: ['E'], rows: [4],
+                keywords: ['cheerios', 'fruit loops', 'froot loops', 'frosted flakes',
+                    'cocoa puffs', 'cinnamon toast crunch', 'lucky charms', 'puff cereal',
+                    'fruity cereal', 'sugar cereal', 'rice krispies', 'corn flakes']
             },
             {
                 id: 'canned_beans',
@@ -1091,7 +1133,7 @@
                 color: '#ffb74d',
                 cols: ['G'], rows: [2],
                 keywords: ['mac and cheese', 'spaghetti-os', 'spaghettios', 'kid pasta',
-                    'dino shapes', 'princess pasta', 'animal pasta', 'tv dinner', 'easy mac']
+                    'dino shapes', 'princess pasta', 'animal pasta', 'easy mac']
             },
             {
                 id: 'canned_veggies',
@@ -1100,8 +1142,8 @@
                 cols: ['G'], rows: [3],
                 keywords: ['canned vegetable', 'canned vegetables', 'canned corn', 'canned peas',
                     'canned green bean', 'canned green beans', 'canned carrot', 'canned carrots',
-                    'canned tomato', 'canned tomatoes', 'canned mushroom', 'canned mushrooms',
-                    'canned spinach', 'canned mixed vegetable', 'canned mixed vegetables']
+                    'canned mushroom', 'canned mushrooms', 'canned spinach', 'canned mixed vegetable',
+                    'canned mixed vegetables']
             },
             {
                 id: 'foreign_things',
