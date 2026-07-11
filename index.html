@@ -63,6 +63,16 @@
             background: var(--primary-light);
         }
 
+        .view-select {
+            display: none;
+            padding: 8px 12px;
+            font-size: 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: white;
+            color: var(--text);
+        }
+
         .input-card {
             background: white;
             padding: 15px;
@@ -451,64 +461,18 @@
             color: var(--text);
         }
 
-        .map-wrapper {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .map-col-labels {
-            display: grid;
-            grid-template-columns: 24px repeat(8, 1fr);
-            gap: 4px;
-            width: 100%;
-            padding: 0 8px;
-            margin-bottom: 2px;
-            box-sizing: border-box;
-        }
-
-        .map-col-label {
-            text-align: center;
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--gray);
-        }
-
-        .map-row-wrap {
-            display: flex;
-            gap: 4px;
-            width: 100%;
-        }
-
-        .map-row-labels {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            width: 24px;
-            flex-shrink: 0;
-        }
-
-        .map-row-label {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--gray);
-            aspect-ratio: 1 / 1;
-        }
-
         .store-map {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
             grid-template-rows: repeat(4, 1fr);
             gap: 4px;
-            flex: 1;
+            width: 100%;
             aspect-ratio: 2 / 1;
             background: white;
             padding: 8px;
             border-radius: 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            box-sizing: border-box;
         }
 
         .map-legend {
@@ -538,6 +502,23 @@
                 gap: 2px;
                 padding: 4px;
             }
+            .map-cell-label {
+                font-size: 7px;
+            }
+            .map-item-dot {
+                font-size: 6px;
+                padding: 1px 2px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .view-toggle {
+                display: none;
+            }
+            .view-select {
+                display: block;
+            }
+        }
             .map-cell-label {
                 font-size: 7px;
             }
@@ -591,6 +572,12 @@
             <button class="view-btn" data-view="map">Map</button>
             <button class="view-btn" data-view="history">History</button>
         </div>
+        <select id="view-select" class="view-select">
+            <option value="list">List</option>
+            <option value="section">Sections</option>
+            <option value="map">Map</option>
+            <option value="history">History</option>
+        </select>
     </header>
 
     <div class="input-card">
@@ -1329,35 +1316,6 @@
         function renderMap() {
             mapView.innerHTML = '';
 
-            const wrapper = document.createElement('div');
-            wrapper.className = 'map-wrapper';
-
-            const colLabels = document.createElement('div');
-            colLabels.className = 'map-col-labels';
-            const corner = document.createElement('div');
-            corner.className = 'map-col-label';
-            colLabels.appendChild(corner);
-            for (let ci = 0; ci < 8; ci++) {
-                const lbl = document.createElement('div');
-                lbl.className = 'map-col-label';
-                lbl.textContent = String.fromCharCode(65 + ci);
-                colLabels.appendChild(lbl);
-            }
-            wrapper.appendChild(colLabels);
-
-            const rowWrap = document.createElement('div');
-            rowWrap.className = 'map-row-wrap';
-
-            const rowLabels = document.createElement('div');
-            rowLabels.className = 'map-row-labels';
-            for (let r = 1; r <= 4; r++) {
-                const lbl = document.createElement('div');
-                lbl.className = 'map-row-label';
-                lbl.textContent = r;
-                rowLabels.appendChild(lbl);
-            }
-            rowWrap.appendChild(rowLabels);
-
             const grid = document.createElement('div');
             grid.className = 'store-map';
 
@@ -1415,9 +1373,7 @@
                 }
             }
 
-            rowWrap.appendChild(grid);
-            wrapper.appendChild(rowWrap);
-            mapView.appendChild(wrapper);
+            mapView.appendChild(grid);
 
             // Unplaced items
             const unplaced = items.filter(item => {
@@ -1452,26 +1408,28 @@
             mapView.appendChild(legend);
         }
 
-        // View toggle
+        function switchView(view) {
+            viewBtns.forEach(b => b.classList.remove('active'));
+            const activeBtn = document.querySelector(`.view-btn[data-view="${view}"]`);
+            if (activeBtn) activeBtn.classList.add('active');
+            document.getElementById('view-select').value = view;
+            currentView = view;
+            listView.classList.add('hidden');
+            sectionView.classList.add('hidden');
+            mapView.classList.add('hidden');
+            historyView.classList.add('hidden');
+            if (view === 'list') listView.classList.remove('hidden');
+            else if (view === 'section') sectionView.classList.remove('hidden');
+            else if (view === 'map') mapView.classList.remove('hidden');
+            else historyView.classList.remove('hidden');
+        }
+
         viewBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                viewBtns.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                currentView = btn.dataset.view;
-                listView.classList.add('hidden');
-                sectionView.classList.add('hidden');
-                mapView.classList.add('hidden');
-                historyView.classList.add('hidden');
-                if (currentView === 'list') {
-                    listView.classList.remove('hidden');
-                } else if (currentView === 'section') {
-                    sectionView.classList.remove('hidden');
-                } else if (currentView === 'map') {
-                    mapView.classList.remove('hidden');
-                } else {
-                    historyView.classList.remove('hidden');
-                }
-            });
+            btn.addEventListener('click', () => switchView(btn.dataset.view));
+        });
+
+        document.getElementById('view-select').addEventListener('change', (e) => {
+            switchView(e.target.value);
         });
 
         // Initial render
