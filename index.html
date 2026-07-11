@@ -466,12 +466,18 @@
             color: var(--text);
         }
 
+        .map-scroll {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
         .store-map {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
             grid-template-rows: repeat(4, 1fr);
             gap: 4px;
-            width: 100%;
+            min-width: 380px;
             aspect-ratio: 2 / 1;
             background: white;
             padding: 8px;
@@ -481,10 +487,6 @@
         }
 
         @media (max-width: 500px) {
-            .store-map {
-                gap: 2px;
-                padding: 4px;
-            }
             .map-cell-label {
                 font-size: 7px;
             }
@@ -1422,6 +1424,8 @@
         function renderMap() {
             mapView.innerHTML = '';
 
+            const scrollWrap = document.createElement('div');
+            scrollWrap.className = 'map-scroll';
             const grid = document.createElement('div');
             grid.className = 'store-map';
 
@@ -1485,7 +1489,8 @@
                 }
             }
 
-            mapView.appendChild(grid);
+            scrollWrap.appendChild(grid);
+            mapView.appendChild(scrollWrap);
 
             // Unplaced items
             const unplaced = items.filter(item => {
