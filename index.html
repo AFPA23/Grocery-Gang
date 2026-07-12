@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grocery Gang</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <style>
         :root {
             --primary: #2e7d32;
@@ -651,10 +653,39 @@
     <div id="map-overlay" class="map-overlay"><div class="map-overlay-card" id="map-overlay-card"></div></div>
 
     <script>
+        firebase.initializeApp({
+            apiKey: "AIzaSyDk92r74eYsNT0EQAepTSZGUpxaJEDj-jk",
+            authDomain: "grocery-gang-c46f8.firebaseapp.com",
+            projectId: "grocery-gang-c46f8",
+            storageBucket: "grocery-gang-c46f8.firebasestorage.app",
+            messagingSenderId: "277765250748",
+            appId: "1:277765250748:web:05b56cc40c2885daacfab9",
+            measurementId: "G-3FW3XYS1P5"
+        });
+        const db = firebase.firestore();
+        const SYNC_DOC = db.collection('grocery-data-v2').doc('shared-list');
+
         let items = JSON.parse(localStorage.getItem('groceryItems')) || [];
         let purchaseHistory = JSON.parse(localStorage.getItem('purchaseHistory')) || [];
         let categoryOverrides = JSON.parse(localStorage.getItem('categoryOverrides')) || {};
         let currentView = 'list';
+        let syncing = false;
+
+        SYNC_DOC.onSnapshot((snap) => {
+            if (syncing) return;
+            const data = snap.data();
+            if (data) {
+                items = data.items || [];
+                purchaseHistory = data.purchaseHistory || [];
+                categoryOverrides = data.categoryOverrides || {};
+                localStorage.setItem('groceryItems', JSON.stringify(items));
+                localStorage.setItem('purchaseHistory', JSON.stringify(purchaseHistory));
+                localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
+                saveAndRender();
+            } else {
+                SYNC_DOC.set({ items: items, purchaseHistory: purchaseHistory, categoryOverrides: categoryOverrides });
+            }
+        });
 
         const form = document.getElementById('item-form');
         const itemNameInput = document.getElementById('item-name');
@@ -729,6 +760,11 @@
         function saveAndRender() {
             localStorage.setItem('groceryItems', JSON.stringify(items));
             localStorage.setItem('purchaseHistory', JSON.stringify(purchaseHistory));
+            localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
+            syncing = true;
+            SYNC_DOC.set({ items: items, purchaseHistory: purchaseHistory, categoryOverrides: categoryOverrides })
+                .then(() => { syncing = false; })
+                .catch(() => { syncing = false; });
             renderList();
             renderSections();
             renderMap();
@@ -1570,7 +1606,7 @@
             }
         });
 
-        // Initial render
+        // Initial render from local cache, then Firestore keeps it in sync
         renderList();
         renderSections();
         renderMap();
