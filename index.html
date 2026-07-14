@@ -617,6 +617,110 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        .complete-trip-btn {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .complete-trip-btn:hover {
+            background: #1b5e20;
+        }
+
+        .complete-trip-btn.hidden {
+            display: none;
+        }
+
+        .trip-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .trip-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .trip-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .trip-date {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .trip-count {
+            font-size: 13px;
+            background: var(--primary-light);
+            color: var(--primary);
+            padding: 4px 10px;
+            border-radius: 10px;
+        }
+
+        .trip-toggle-icon {
+            font-size: 16px;
+            color: var(--gray);
+            transition: transform 0.2s;
+        }
+
+        .trip-card.expanded .trip-toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .trip-items {
+            display: none;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .trip-card.expanded .trip-items {
+            display: block;
+        }
+
+        .trip-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 14px;
+        }
+
+        .trip-item-name {
+            flex: 1;
+        }
+
+        .trip-item-section {
+            font-size: 12px;
+            color: var(--gray);
+            background: var(--primary-light);
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-left: 8px;
+        }
+
+        .history-scroll {
+            max-height: 70vh;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
     </style>
 </head>
 <body>
@@ -625,13 +729,11 @@
         <h1>Grocery Gang</h1>
         <div class="view-toggle">
             <button class="view-btn active" data-view="list">List</button>
-            <button class="view-btn" data-view="section">Sections</button>
             <button class="view-btn" data-view="map">Map</button>
             <button class="view-btn" data-view="history">History</button>
         </div>
         <select id="view-select" class="view-select">
             <option value="list">List</option>
-            <option value="section">Sections</option>
             <option value="map">Map</option>
             <option value="history">History</option>
         </select>
@@ -645,8 +747,9 @@
         <div id="detected-section" class="detected-section"></div>
     </div>
 
+    <button id="complete-trip-btn" class="complete-trip-btn hidden">✓ Complete Trip</button>
+
     <div id="list-view"></div>
-    <div id="section-view" class="hidden"></div>
     <div id="map-view" class="hidden"></div>
     <div id="history-view" class="hidden"></div>
     <div id="toast" class="toast"></div>
@@ -666,7 +769,7 @@
         const SYNC_DOC = db.collection('grocery-data-v2').doc('shared-list');
 
         let items = JSON.parse(localStorage.getItem('groceryItems')) || [];
-        let purchaseHistory = JSON.parse(localStorage.getItem('purchaseHistory')) || [];
+        let trips = JSON.parse(localStorage.getItem('trips')) || [];
         let categoryOverrides = JSON.parse(localStorage.getItem('categoryOverrides')) || {};
         let currentView = 'list';
         let syncing = false;
@@ -676,17 +779,17 @@
             const data = snap.data();
             if (data) {
                 items = data.items || [];
-                purchaseHistory = data.purchaseHistory || [];
+                trips = data.trips || [];
                 categoryOverrides = data.categoryOverrides || {};
                 localStorage.setItem('groceryItems', JSON.stringify(items));
-                localStorage.setItem('purchaseHistory', JSON.stringify(purchaseHistory));
+                localStorage.setItem('trips', JSON.stringify(trips));
                 localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
                 renderList();
-                renderSections();
                 renderMap();
                 renderHistory();
+                updateCompleteTripButton();
             } else {
-                SYNC_DOC.set({ items: items, purchaseHistory: purchaseHistory, categoryOverrides: categoryOverrides });
+                SYNC_DOC.set({ items: items, trips: trips, categoryOverrides: categoryOverrides });
             }
         });
 
@@ -694,9 +797,9 @@
         const itemNameInput = document.getElementById('item-name');
         const detectedSectionEl = document.getElementById('detected-section');
         const listView = document.getElementById('list-view');
-        const sectionView = document.getElementById('section-view');
         const mapView = document.getElementById('map-view');
         const historyView = document.getElementById('history-view');
+        const completeTripBtn = document.getElementById('complete-trip-btn');
         const viewBtns = document.querySelectorAll('.view-btn');
 
         function getCategory(name) {
@@ -734,26 +837,43 @@
         });
 
         function toggleComplete(id) {
-            let wasCompleted = false;
             items = items.map(item => {
                 if (item.id === id) {
-                    wasCompleted = item.completed;
                     return { ...item, completed: !item.completed };
                 }
                 return item;
             });
-            // Log to history when newly completed
-            const toggled = items.find(i => i.id === id);
-            if (toggled && toggled.completed && !wasCompleted) {
-                purchaseHistory.push({
-                    id: Date.now().toString() + '-' + id,
-                    name: toggled.name,
-                    section: toggled.category,
-                    date: new Date().toISOString()
-                });
-            }
             saveAndRender();
         }
+
+        function completeTrip() {
+            const completedItems = items.filter(item => item.completed);
+            if (completedItems.length === 0) return;
+
+            const trip = {
+                id: Date.now().toString(),
+                date: new Date().toISOString(),
+                items: completedItems.map(item => ({
+                    name: item.name,
+                    section: item.category
+                }))
+            };
+
+            trips.push(trip);
+            items = items.filter(item => !item.completed);
+            saveAndRender();
+        }
+
+        function updateCompleteTripButton() {
+            const hasCompleted = items.some(item => item.completed);
+            if (hasCompleted) {
+                completeTripBtn.classList.remove('hidden');
+            } else {
+                completeTripBtn.classList.add('hidden');
+            }
+        }
+
+        completeTripBtn.addEventListener('click', completeTrip);
 
         function deleteItem(id) {
             items = items.filter(item => item.id !== id);
@@ -762,16 +882,16 @@
 
         function saveAndRender() {
             localStorage.setItem('groceryItems', JSON.stringify(items));
-            localStorage.setItem('purchaseHistory', JSON.stringify(purchaseHistory));
+            localStorage.setItem('trips', JSON.stringify(trips));
             localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
             syncing = true;
-            SYNC_DOC.set({ items: items, purchaseHistory: purchaseHistory, categoryOverrides: categoryOverrides })
+            SYNC_DOC.set({ items: items, trips: trips, categoryOverrides: categoryOverrides })
                 .then(() => { syncing = false; })
                 .catch(() => { syncing = false; });
             renderList();
-            renderSections();
             renderMap();
             renderHistory();
+            updateCompleteTripButton();
         }
 
         function getGroupedItems() {
@@ -788,109 +908,6 @@
             listView.innerHTML = '';
             if (items.length === 0) {
                 listView.innerHTML = '<div class="empty-state">Your grocery list is empty. Start adding items!</div>';
-                return;
-            }
-
-            const grouped = getGroupedItems();
-
-            const shown = new Set();
-            MAP_ZONES.forEach(z => {
-                const category = z.label;
-                const catItems = grouped[category];
-                if (!catItems || catItems.length === 0) return;
-                shown.add(category);
-
-                const section = document.createElement('div');
-                section.className = 'category-section';
-
-                const title = document.createElement('h2');
-                title.className = 'category-title';
-                title.textContent = category;
-                const countSpan = document.createElement('span');
-                countSpan.className = 'count';
-                countSpan.textContent = `${catItems.filter(i => !i.completed).length} left`;
-                title.appendChild(countSpan);
-                section.appendChild(title);
-
-                catItems.forEach(item => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = `list-item ${item.completed ? 'completed' : ''}`;
-
-                    const leftDiv = document.createElement('div');
-                    leftDiv.className = 'item-left';
-                    leftDiv.onclick = () => toggleComplete(item.id);
-
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.className = 'checkbox';
-                    checkbox.checked = item.completed;
-
-                    const span = document.createElement('span');
-                    span.className = 'item-text';
-                    span.textContent = item.name;
-
-                    leftDiv.appendChild(checkbox);
-                    leftDiv.appendChild(span);
-
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'delete-btn';
-                    deleteBtn.textContent = '✕';
-                    deleteBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        deleteItem(item.id);
-                    };
-
-                    itemDiv.appendChild(leftDiv);
-                    itemDiv.appendChild(deleteBtn);
-                    section.appendChild(itemDiv);
-                });
-
-                listView.appendChild(section);
-            });
-
-            if (grouped['Other'] && !shown.has('Other')) {
-                const catItems = grouped['Other'];
-                const section = document.createElement('div');
-                section.className = 'category-section';
-                const title = document.createElement('h2');
-                title.className = 'category-title';
-                title.textContent = 'Other';
-                const countSpan = document.createElement('span');
-                countSpan.className = 'count';
-                countSpan.textContent = `${catItems.filter(i => !i.completed).length} left`;
-                title.appendChild(countSpan);
-                section.appendChild(title);
-                catItems.forEach(item => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = `list-item ${item.completed ? 'completed' : ''}`;
-                    const leftDiv = document.createElement('div');
-                    leftDiv.className = 'item-left';
-                    leftDiv.onclick = () => toggleComplete(item.id);
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.className = 'checkbox';
-                    checkbox.checked = item.completed;
-                    const span = document.createElement('span');
-                    span.className = 'item-text';
-                    span.textContent = item.name;
-                    leftDiv.appendChild(checkbox);
-                    leftDiv.appendChild(span);
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'delete-btn';
-                    deleteBtn.textContent = '✕';
-                    deleteBtn.onclick = (e) => { e.stopPropagation(); deleteItem(item.id); };
-                    itemDiv.appendChild(leftDiv);
-                    itemDiv.appendChild(deleteBtn);
-                    section.appendChild(itemDiv);
-                });
-                listView.appendChild(section);
-            }
-        }
-
-        function renderSections() {
-            sectionView.innerHTML = '';
-            if (items.length === 0) {
-                sectionView.innerHTML = '<div class="empty-state">Your grocery list is empty. Start adding items!</div>';
                 return;
             }
 
@@ -984,42 +1001,43 @@
                 grid.appendChild(card);
             }
 
-            sectionView.appendChild(grid);
+            listView.appendChild(grid);
         }
 
         function renderHistory() {
             historyView.innerHTML = '';
-            if (purchaseHistory.length === 0) {
-                historyView.innerHTML = '<div class="empty-state">No purchase history yet. Check off items to track them here.</div>';
+            if (trips.length === 0) {
+                historyView.innerHTML = '<div class="empty-state">No shopping trips yet. Check off items and complete a trip to start tracking!</div>';
                 return;
             }
 
-            const total = purchaseHistory.length;
-            const sections = new Set(purchaseHistory.map(p => p.section)).size;
+            const scrollContainer = document.createElement('div');
+            scrollContainer.className = 'history-scroll';
 
+            const total = trips.reduce((sum, trip) => sum + trip.items.length, 0);
             const stats = document.createElement('div');
             stats.className = 'history-stats';
             stats.innerHTML = `
                 <div class="history-stat-card">
-                    <div class="history-stat-value">${total}</div>
-                    <div class="history-stat-label">Total Purchases</div>
+                    <div class="history-stat-value">${trips.length}</div>
+                    <div class="history-stat-label">Total Trips</div>
                 </div>
                 <div class="history-stat-card">
-                    <div class="history-stat-value">${sections}</div>
-                    <div class="history-stat-label">Sections Shopped</div>
+                    <div class="history-stat-value">${total}</div>
+                    <div class="history-stat-label">Items Purchased</div>
                 </div>
             `;
             historyView.appendChild(stats);
 
-            // Group by date (most recent first)
-            const groups = {};
-            purchaseHistory.slice().reverse().forEach(p => {
-                const key = p.date.slice(0, 10);
-                if (!groups[key]) groups[key] = [];
-                groups[key].push(p);
+            // Group trips by date (most recent first)
+            const groupedTrips = {};
+            trips.slice().reverse().forEach(trip => {
+                const key = trip.date.slice(0, 10);
+                if (!groupedTrips[key]) groupedTrips[key] = [];
+                groupedTrips[key].push(trip);
             });
 
-            Object.entries(groups).forEach(([dateStr, entries]) => {
+            Object.entries(groupedTrips).forEach(([dateStr, dateTrips]) => {
                 const group = document.createElement('div');
                 group.className = 'history-date-group';
 
@@ -1028,21 +1046,67 @@
 
                 const title = document.createElement('div');
                 title.className = 'history-date-title';
-                title.textContent = `${label} (${entries.length})`;
+                title.textContent = `${label} (${dateTrips.length} trip${dateTrips.length !== 1 ? 's' : ''})`;
                 group.appendChild(title);
 
-                entries.forEach(p => {
-                    const row = document.createElement('div');
-                    row.className = 'history-item';
-                    row.innerHTML = `
-                        <span class="history-item-name">${p.name}</span>
-                        <span class="history-item-section">${p.section}</span>
-                    `;
-                    group.appendChild(row);
+                dateTrips.forEach(trip => {
+                    const tripCard = document.createElement('div');
+                    tripCard.className = 'trip-card';
+
+                    const header = document.createElement('div');
+                    header.className = 'trip-header';
+
+                    const timeEl = document.createElement('span');
+                    timeEl.className = 'trip-date';
+                    const tripTime = new Date(trip.date);
+                    timeEl.textContent = tripTime.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+                    const countEl = document.createElement('span');
+                    countEl.className = 'trip-count';
+                    countEl.textContent = `${trip.items.length} item${trip.items.length !== 1 ? 's' : ''}`;
+
+                    const toggleIcon = document.createElement('span');
+                    toggleIcon.className = 'trip-toggle-icon';
+                    toggleIcon.textContent = '▼';
+
+                    header.appendChild(timeEl);
+                    header.appendChild(countEl);
+                    header.appendChild(toggleIcon);
+                    tripCard.appendChild(header);
+
+                    const itemsContainer = document.createElement('div');
+                    itemsContainer.className = 'trip-items';
+
+                    trip.items.forEach(tripItem => {
+                        const itemRow = document.createElement('div');
+                        itemRow.className = 'trip-item';
+
+                        const nameSpan = document.createElement('span');
+                        nameSpan.className = 'trip-item-name';
+                        nameSpan.textContent = tripItem.name;
+
+                        const sectionSpan = document.createElement('span');
+                        sectionSpan.className = 'trip-item-section';
+                        sectionSpan.textContent = tripItem.section;
+
+                        itemRow.appendChild(nameSpan);
+                        itemRow.appendChild(sectionSpan);
+                        itemsContainer.appendChild(itemRow);
+                    });
+
+                    tripCard.appendChild(itemsContainer);
+
+                    tripCard.addEventListener('click', () => {
+                        tripCard.classList.toggle('expanded');
+                    });
+
+                    group.appendChild(tripCard);
                 });
 
-                historyView.appendChild(group);
+                scrollContainer.appendChild(group);
             });
+
+            historyView.appendChild(scrollContainer);
         }
 
         const MAP_ZONES = [
@@ -1586,11 +1650,9 @@
             document.getElementById('view-select').value = view;
             currentView = view;
             listView.classList.add('hidden');
-            sectionView.classList.add('hidden');
             mapView.classList.add('hidden');
             historyView.classList.add('hidden');
             if (view === 'list') listView.classList.remove('hidden');
-            else if (view === 'section') sectionView.classList.remove('hidden');
             else if (view === 'map') mapView.classList.remove('hidden');
             else historyView.classList.remove('hidden');
         }
@@ -1611,9 +1673,9 @@
 
         // Initial render from local cache, then Firestore keeps it in sync
         renderList();
-        renderSections();
         renderMap();
         renderHistory();
+        updateCompleteTripButton();
     </script>
 </body>
 </html>
