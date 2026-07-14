@@ -979,7 +979,7 @@
             };
 
             items.push(newItem);
-            
+            sendPush('${name} added to the list');
             // Clear input immediately before render
             itemNameInput.value = '';
             detectedSectionEl.innerHTML = '';
@@ -1045,6 +1045,12 @@
             renderMap();
             renderHistory();
             updateCompleteTripButton();
+        }
+        function sendPush(message) {
+          fetch('https://ntfy.sh/grocery-gang-humba-wumba', {
+            method: 'POST',
+            body: message
+          }).catch(() => {}); // fail silently if offline
         }
 
         function getGroupedItems() {
