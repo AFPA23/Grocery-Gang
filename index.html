@@ -1003,6 +1003,8 @@
             const completedItems = items.filter(item => item.completed);
             if (completedItems.length === 0) return;
 
+            sendPush('Grocery trip completed - heading home!🏡');
+            
             const trip = {
                 id: Date.now().toString(),
                 date: new Date().toISOString(),
