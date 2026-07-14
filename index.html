@@ -440,9 +440,26 @@
         .map-unplaced-tag {
             font-size: 12px;
             background: var(--light-gray);
-            padding: 4px 10px;
+            padding: 6px 12px;
             border-radius: 4px;
             color: var(--text);
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            user-select: none;
+            display: inline-block;
+            font-family: inherit;
+            font-weight: inherit;
+        }
+
+        .map-unplaced-tag:hover {
+            background: var(--primary-light);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .map-unplaced-tag:active {
+            transform: scale(0.98);
         }
 
         .map-scroll {
@@ -1634,9 +1651,8 @@
 
             const picker = document.createElement('div');
             picker.className = 'zone-picker';
-            const rect = anchor.getBoundingClientRect();
-            picker.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${Math.min(rect.left, window.innerWidth - 200)}px;background:white;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);padding:8px;z-index:300;max-height:240px;overflow-y:auto;min-width:180px`;
-
+            
+            // Build the picker with options first to calculate height
             MAP_ZONES.forEach(z => {
                 const opt = document.createElement('div');
                 opt.style.cssText = 'padding:6px 10px;cursor:pointer;border-radius:4px;font-size:13px;display:flex;align-items:center;gap:8px';
@@ -1660,7 +1676,42 @@
                 picker.appendChild(opt);
             });
 
+            // Temporarily add to DOM to calculate dimensions
+            picker.style.cssText = 'position:fixed;visibility:hidden;background:white;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);padding:8px;z-index:300;max-height:240px;overflow-y:auto;min-width:180px';
             document.body.appendChild(picker);
+            
+            // Calculate positions
+            const rect = anchor.getBoundingClientRect();
+            const pickerHeight = picker.offsetHeight;
+            const pickerWidth = picker.offsetWidth;
+            const viewportHeight = window.innerHeight;
+            const viewportWidth = window.innerWidth;
+            const padding = 8;
+            
+            // Calculate vertical position (prefer bottom, but go top if needed)
+            let top;
+            const spaceBelow = viewportHeight - rect.bottom;
+            const spaceAbove = rect.top;
+            
+            if (spaceBelow >= pickerHeight + padding) {
+                top = rect.bottom + padding;
+            } else if (spaceAbove >= pickerHeight + padding) {
+                top = rect.top - pickerHeight - padding;
+            } else {
+                // Constrain to viewport: use whatever space is larger
+                if (spaceBelow > spaceAbove) {
+                    top = Math.max(padding, viewportHeight - pickerHeight - padding);
+                } else {
+                    top = Math.max(padding, rect.top - pickerHeight - padding);
+                }
+            }
+            
+            // Calculate horizontal position (center on anchor, but constrain to viewport)
+            let left = rect.left + rect.width / 2 - pickerWidth / 2;
+            left = Math.max(padding, Math.min(left, viewportWidth - pickerWidth - padding));
+            
+            // Apply final position
+            picker.style.cssText = `position:fixed;top:${top}px;left:${left}px;background:white;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);padding:8px;z-index:300;max-height:240px;overflow-y:auto;min-width:180px;visibility:visible`;
 
             const closePicker = (e) => {
                 if (!picker.contains(e.target) && e.target !== anchor) {
@@ -1750,13 +1801,18 @@
             if (unplaced.length > 0) {
                 const box = document.createElement('div');
                 box.className = 'map-unplaced';
-                box.innerHTML = `<div class="map-unplaced-title">Unplaced Items (no map zone)</div>`;
+                box.innerHTML = `<div class="map-unplaced-title">Unplaced Items (no map zone) — Click to assign</div>`;
                 const wrap = document.createElement('div');
                 wrap.className = 'map-unplaced-items';
                 unplaced.forEach(item => {
-                    const tag = document.createElement('span');
+                    const tag = document.createElement('button');
                     tag.className = 'map-unplaced-tag';
+                    tag.type = 'button';
                     tag.textContent = item.name;
+                    tag.onclick = (e) => {
+                        e.stopPropagation();
+                        showZonePicker(tag, item);
+                    };
                     wrap.appendChild(tag);
                 });
                 box.appendChild(wrap);
