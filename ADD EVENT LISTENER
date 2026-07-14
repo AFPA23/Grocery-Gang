@@ -1,1 +1,19 @@
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const name = itemNameInput.value.trim();
+  if (!name) return;
 
+  const newItem = {
+    id: Date.now().toString(),
+    name: name,
+    category: getCategory(name),
+    completed: false
+  };
+  items.push(newItem);
+  sendPush(`${name} added to the list 🛒`);   // ← new line
+  saveAndRender();
+  showToast();
+  form.reset();
+  detectedSectionEl.innerHTML = '';
+  itemNameInput.focus();
+});
