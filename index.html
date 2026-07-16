@@ -6,6 +6,8 @@
     <title>Grocery Gang</title>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+
     <style>
         :root {
             --primary: #2e7d32;
@@ -268,6 +270,18 @@
             text-align: center;
             padding: 20px;
         }
+.drag-handle {
+    cursor: grab;
+    color: var(--gray);
+    font-size: 18px;
+    padding: 0 6px 0 0;
+    touch-action: none;
+    user-select: none;
+    line-height: 1;
+}
+.drag-handle:active { cursor: grabbing; }
+.section-card.sortable-ghost { opacity: 0.4; }
+.section-card.sortable-drag { box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
 
         /* History View */
         .history-date-group {
@@ -920,28 +934,32 @@
 
         let items = JSON.parse(localStorage.getItem('groceryItems')) || [];
         let trips = JSON.parse(localStorage.getItem('trips')) || [];
-        let categoryOverrides = JSON.parse(localStorage.getItem('categoryOverrides')) || {};
-        let currentView = 'list';
-        let syncing = false;
+let categoryOverrides = JSON.parse(localStorage.getItem('categoryOverrides')) || {};
+let categoryOrder = JSON.parse(localStorage.getItem('categoryOrder')) || [];
+let currentView = 'list';
+let syncing = false;
+let sortableInstance = null;
 
-        SYNC_DOC.onSnapshot((snap) => {
-            if (syncing) return;
-            const data = snap.data();
-            if (data) {
-                items = data.items || [];
-                trips = data.trips || [];
-                categoryOverrides = data.categoryOverrides || {};
-                localStorage.setItem('groceryItems', JSON.stringify(items));
-                localStorage.setItem('trips', JSON.stringify(trips));
-                localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
-                renderList();
-                renderMap();
-                renderHistory();
-                updateCompleteTripButton();
-            } else {
-                SYNC_DOC.set({ items: items, trips: trips, categoryOverrides: categoryOverrides });
-            }
-        });
+SYNC_DOC.onSnapshot((snap) => {
+    if (syncing) return;
+    const data = snap.data();
+    if (data) {
+        items = data.items || [];
+        trips = data.trips || [];
+        categoryOverrides = data.categoryOverrides || {};
+        categoryOrder = data.categoryOrder || [];
+        localStorage.setItem('groceryItems', JSON.stringify(items));
+        localStorage.setItem('trips', JSON.stringify(trips));
+        localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
+        localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
+        renderList();
+        renderMap();
+        renderHistory();
+        updateCompleteTripButton();
+    } else {
+        SYNC_DOC.set({ items: items, trips: trips, categoryOverrides: categoryOverrides, categoryOrder: categoryOrder });
+    }
+});
 
         const form = document.getElementById('item-form');
         const itemNameInput = document.getElementById('item-name');
@@ -1039,12 +1057,13 @@
             saveAndRender();
         }
 
-        function saveAndRender() {
+function saveAndRender() {
     localStorage.setItem('groceryItems', JSON.stringify(items));
     localStorage.setItem('trips', JSON.stringify(trips));
     localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
+    localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
     syncing = true;
-    SYNC_DOC.set({ items: items, categoryOverrides: categoryOverrides }, { merge: true })  // ← changed line
+    SYNC_DOC.set({ items: items, categoryOverrides: categoryOverrides, categoryOrder: categoryOrder }, { merge: true })
         .then(() => { syncing = false; })
         .catch(() => { syncing = false; });
     renderList();
@@ -1070,213 +1089,181 @@
             return grouped;
         }
 
-        function renderList() {
-            listView.innerHTML = '';
-            if (items.length === 0) {
-                listView.innerHTML = '<div class="empty-state">Your grocery list is empty. Start adding items!</div>';
-                return;
+function createCategoryCard(label, catItems, color) {
+    const card = document.createElement('div');
+    card.className = 'section-card';
+    card.dataset.category = label;
+    card.style.borderTopColor = color;
+
+    const header = document.createElement('div');
+    header.className = 'section-card-header';
+
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.textContent = '⠿';
+    handle.title = 'Drag to reorder';
+
+    const title = document.createElement('h3');
+    title.className = 'section-card-title';
+    title.textContent = label;
+    title.style.color = color;
+
+    const count = document.createElement('span');
+    count.className = 'section-card-count';
+    const activeItems = catItems.filter(i => !i.completed).length;
+    count.textContent = `${activeItems} item${activeItems !== 1 ? 's' : ''}`;
+
+    header.appendChild(handle);
+    header.appendChild(title);
+    header.appendChild(count);
+    card.appendChild(header);
+
+    catItems.forEach(item => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'section-card-item';
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'section-card-item-content';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'checkbox';
+        checkbox.checked = item.completed;
+        checkbox.onchange = () => toggleComplete(item.id);
+
+        const itemLabel = document.createElement('label');
+        itemLabel.className = item.completed ? 'completed-label' : '';
+        itemLabel.textContent = item.name;
+
+        contentDiv.appendChild(checkbox);
+        contentDiv.appendChild(itemLabel);
+
+        const moveBtn = document.createElement('button');
+        moveBtn.className = 'move-item-btn';
+        moveBtn.textContent = 'Move';
+        moveBtn.onclick = (e) => { e.stopPropagation(); showZonePicker(moveBtn, item); };
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-item-btn';
+        deleteBtn.textContent = '✕';
+        deleteBtn.title = 'Delete item';
+        deleteBtn.onclick = (e) => { e.stopPropagation(); deleteItem(item.id); };
+
+        itemDiv.appendChild(contentDiv);
+        itemDiv.appendChild(moveBtn);
+        itemDiv.appendChild(deleteBtn);
+        card.appendChild(itemDiv);
+    });
+
+    return card;
+}
+
+function getCategoryDisplayOrder(visibleCats) {
+    const defaultOrder = MAP_ZONES.map(z => z.label).concat(['Other']);
+    const known = visibleCats.filter(c => categoryOrder.includes(c));
+    const unknown = visibleCats.filter(c => !categoryOrder.includes(c));
+    known.sort((a, b) => categoryOrder.indexOf(a) - categoryOrder.indexOf(b));
+    unknown.sort((a, b) => defaultOrder.indexOf(a) - defaultOrder.indexOf(b));
+    return [...known, ...unknown];
+}
+
+function renderList() {
+    listView.innerHTML = '';
+    if (items.length === 0) {
+        listView.innerHTML = '<div class="empty-state">Your grocery list is empty. Start adding items!</div>';
+        return;
+    }
+
+    const grouped = getGroupedItems();
+    const grid = document.createElement('div');
+    grid.className = 'section-grid';
+
+    const visibleCats = Object.keys(grouped).filter(cat => grouped[cat].length > 0);
+    const displayOrder = getCategoryDisplayOrder(visibleCats);
+
+    displayOrder.forEach(category => {
+        const catItems = grouped[category];
+        if (!catItems || catItems.length === 0) return;
+        const zone = MAP_ZONES.find(z => z.label === category);
+        const color = zone ? zone.color : 'var(--gray)';
+        grid.appendChild(createCategoryCard(category, catItems, color));
+    });
+
+    listView.appendChild(grid);
+
+    if (sortableInstance) {
+        sortableInstance.destroy();
+        sortableInstance = null;
+    }
+    if (typeof Sortable !== 'undefined' && grid.children.length > 1) {
+        sortableInstance = new Sortable(grid, {
+            handle: '.drag-handle',
+            animation: 150,
+            onEnd: function() {
+                const newVisibleOrder = Array.from(grid.children).map(c => c.dataset.category);
+                const hiddenOrder = categoryOrder.filter(c => !newVisibleOrder.includes(c));
+                categoryOrder = [...newVisibleOrder, ...hiddenOrder];
+                localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
+                syncing = true;
+                SYNC_DOC.set({ categoryOrder: categoryOrder }, { merge: true })
+                    .then(() => { syncing = false; })
+                    .catch(() => { syncing = false; });
             }
+        });
+    }
 
-            const grouped = getGroupedItems();
-            const grid = document.createElement('div');
-            grid.className = 'section-grid';
+    const unplaced = items.filter(item => !getMapZoneForItem(item.name));
+    if (unplaced.length > 0) {
+        const unplacedSection = document.createElement('div');
+        unplacedSection.className = 'unplaced-section';
 
-            const shown = new Set();
-            MAP_ZONES.forEach(z => {
-                const category = z.label;
-                const catItems = grouped[category];
-                if (!catItems || catItems.length === 0) return;
-                shown.add(category);
+        const title = document.createElement('div');
+        title.className = 'unplaced-title';
+        title.textContent = `⚠ Unplaced Items (${unplaced.length})`;
+        unplacedSection.appendChild(title);
 
-                const card = document.createElement('div');
-                card.className = 'section-card';
+        const itemsList = document.createElement('div');
+        itemsList.className = 'unplaced-items-list';
 
-                const header = document.createElement('div');
-                header.className = 'section-card-header';
+        unplaced.forEach(item => {
+            const itemRow = document.createElement('div');
+            itemRow.className = 'unplaced-item';
 
-                const title = document.createElement('h3');
-                title.className = 'section-card-title';
-                title.textContent = category;
-                title.style.color = z.color;
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'unplaced-item-name';
+            nameSpan.textContent = item.name;
 
-                const count = document.createElement('span');
-                count.className = 'section-card-count';
-                const activeItems = catItems.filter(i => !i.completed).length;
-                count.textContent = `${activeItems} item${activeItems !== 1 ? 's' : ''}`;
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'unplaced-item-checkbox';
+            checkbox.checked = item.completed;
+            checkbox.onchange = () => toggleComplete(item.id);
 
-                header.appendChild(title);
-                header.appendChild(count);
-                card.appendChild(header);
-                card.style.borderTopColor = z.color;
+            const moveBtn = document.createElement('button');
+            moveBtn.className = 'move-item-btn';
+            moveBtn.textContent = 'Assign';
+            moveBtn.style.marginLeft = '8px';
+            moveBtn.onclick = (e) => { e.stopPropagation(); showZonePicker(moveBtn, item); };
 
-                catItems.forEach(item => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'section-card-item';
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-item-btn';
+            deleteBtn.textContent = '✕';
+            deleteBtn.title = 'Delete item';
+            deleteBtn.style.marginLeft = '4px';
+            deleteBtn.onclick = (e) => { e.stopPropagation(); deleteItem(item.id); };
 
-                    const contentDiv = document.createElement('div');
-                    contentDiv.className = 'section-card-item-content';
+            itemRow.appendChild(nameSpan);
+            itemRow.appendChild(checkbox);
+            itemRow.appendChild(moveBtn);
+            itemRow.appendChild(deleteBtn);
+            itemsList.appendChild(itemRow);
+        });
 
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.className = 'checkbox';
-                    checkbox.checked = item.completed;
-                    checkbox.onchange = () => toggleComplete(item.id);
+        unplacedSection.appendChild(itemsList);
+        listView.appendChild(unplacedSection);
+    }
+}
 
-                    const label = document.createElement('label');
-                    label.className = item.completed ? 'completed-label' : '';
-                    label.textContent = item.name;
-
-                    contentDiv.appendChild(checkbox);
-                    contentDiv.appendChild(label);
-
-                    const moveBtn = document.createElement('button');
-                    moveBtn.className = 'move-item-btn';
-                    moveBtn.textContent = 'Move';
-                    moveBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        showZonePicker(moveBtn, item);
-                    };
-
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'delete-item-btn';
-                    deleteBtn.textContent = '✕';
-                    deleteBtn.title = 'Delete item';
-                    deleteBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        deleteItem(item.id);
-                    };
-
-                    itemDiv.appendChild(contentDiv);
-                    itemDiv.appendChild(moveBtn);
-                    itemDiv.appendChild(deleteBtn);
-                    card.appendChild(itemDiv);
-                });
-
-                grid.appendChild(card);
-            });
-
-            if (grouped['Other'] && !shown.has('Other')) {
-                const catItems = grouped['Other'];
-                const card = document.createElement('div');
-                card.className = 'section-card';
-                card.style.borderTopColor = 'var(--gray)';
-                const header = document.createElement('div');
-                header.className = 'section-card-header';
-                const title = document.createElement('h3');
-                title.className = 'section-card-title';
-                title.textContent = 'Other';
-                title.style.color = 'var(--gray)';
-                const count = document.createElement('span');
-                count.className = 'section-card-count';
-                const activeItems = catItems.filter(i => !i.completed).length;
-                count.textContent = `${activeItems} item${activeItems !== 1 ? 's' : ''}`;
-                header.appendChild(title);
-                header.appendChild(count);
-                card.appendChild(header);
-                catItems.forEach(item => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'section-card-item';
-                    
-                    const contentDiv = document.createElement('div');
-                    contentDiv.className = 'section-card-item-content';
-                    
-                    const cb = document.createElement('input');
-                    cb.type = 'checkbox';
-                    cb.className = 'checkbox';
-                    cb.checked = item.completed;
-                    cb.onchange = () => toggleComplete(item.id);
-                    const label = document.createElement('label');
-                    label.textContent = item.name;
-                    label.className = item.completed ? 'completed-label' : '';
-                    
-                    contentDiv.appendChild(cb);
-                    contentDiv.appendChild(label);
-                    
-                    const moveBtn = document.createElement('button');
-                    moveBtn.className = 'move-item-btn';
-                    moveBtn.textContent = 'Move';
-                    moveBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        showZonePicker(moveBtn, item);
-                    };
-                    
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'delete-item-btn';
-                    deleteBtn.textContent = '✕';
-                    deleteBtn.title = 'Delete item';
-                    deleteBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        deleteItem(item.id);
-                    };
-                    
-                    itemDiv.appendChild(contentDiv);
-                    itemDiv.appendChild(moveBtn);
-                    itemDiv.appendChild(deleteBtn);
-                    card.appendChild(itemDiv);
-                });
-                grid.appendChild(card);
-            }
-
-            listView.appendChild(grid);
-
-            // Unplaced items section
-            const unplaced = items.filter(item => !getMapZoneForItem(item.name));
-            if (unplaced.length > 0) {
-                const unplacedSection = document.createElement('div');
-                unplacedSection.className = 'unplaced-section';
-
-                const title = document.createElement('div');
-                title.className = 'unplaced-title';
-                title.textContent = `⚠ Unplaced Items (${unplaced.length})`;
-                unplacedSection.appendChild(title);
-
-                const itemsList = document.createElement('div');
-                itemsList.className = 'unplaced-items-list';
-
-                unplaced.forEach(item => {
-                    const itemRow = document.createElement('div');
-                    itemRow.className = 'unplaced-item';
-
-                    const nameSpan = document.createElement('span');
-                    nameSpan.className = 'unplaced-item-name';
-                    nameSpan.textContent = item.name;
-
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.className = 'unplaced-item-checkbox';
-                    checkbox.checked = item.completed;
-                    checkbox.onchange = () => toggleComplete(item.id);
-
-                    const moveBtn = document.createElement('button');
-                    moveBtn.className = 'move-item-btn';
-                    moveBtn.textContent = 'Assign';
-                    moveBtn.style.marginLeft = '8px';
-                    moveBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        showZonePicker(moveBtn, item);
-                    };
-
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'delete-item-btn';
-                    deleteBtn.textContent = '✕';
-                    deleteBtn.title = 'Delete item';
-                    deleteBtn.style.marginLeft = '4px';
-                    deleteBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        deleteItem(item.id);
-                    };
-
-                    itemRow.appendChild(nameSpan);
-                    itemRow.appendChild(checkbox);
-                    itemRow.appendChild(moveBtn);
-                    itemRow.appendChild(deleteBtn);
-                    itemsList.appendChild(itemRow);
-                });
-
-                unplacedSection.appendChild(itemsList);
-                listView.appendChild(unplacedSection);
-            }
-        }
 
         function renderHistory() {
             historyView.innerHTML = '';
