@@ -1000,24 +1000,28 @@
         }
 
         function completeTrip() {
-            const completedItems = items.filter(item => item.completed);
-            if (completedItems.length === 0) return;
+    const completedItems = items.filter(item => item.completed);
+    if (completedItems.length === 0) return;
 
-            sendPush('Grocery trip completed - heading home!🏡');
-            
-            const trip = {
-                id: Date.now().toString(),
-                date: new Date().toISOString(),
-                items: completedItems.map(item => ({
-                    name: item.name,
-                    section: item.category
-                }))
-            };
+    sendPush('Grocery trip completed - heading home!🏡');
+    
+    const trip = {
+        id: Date.now().toString(),
+        date: new Date().toISOString(),
+        items: completedItems.map(item => ({
+            name: item.name,
+            section: item.category
+        }))
+    };
 
-            trips.push(trip);
-            items = items.filter(item => !item.completed);
-            saveAndRender();
-        }
+    trips.push(trip);
+    SYNC_DOC.update({                                          // ← new line
+        trips: firebase.firestore.FieldValue.arrayUnion(trip)  // ← new line
+    });                                                          // ← new line
+    items = items.filter(item => !item.completed);
+    saveAndRender();
+}
+
 
         function updateCompleteTripButton() {
             const hasCompleted = items.some(item => item.completed);
@@ -1036,18 +1040,19 @@
         }
 
         function saveAndRender() {
-            localStorage.setItem('groceryItems', JSON.stringify(items));
-            localStorage.setItem('trips', JSON.stringify(trips));
-            localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
-            syncing = true;
-            SYNC_DOC.set({ items: items, trips: trips, categoryOverrides: categoryOverrides })
-                .then(() => { syncing = false; })
-                .catch(() => { syncing = false; });
-            renderList();
-            renderMap();
-            renderHistory();
-            updateCompleteTripButton();
-        }
+    localStorage.setItem('groceryItems', JSON.stringify(items));
+    localStorage.setItem('trips', JSON.stringify(trips));
+    localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
+    syncing = true;
+    SYNC_DOC.set({ items: items, categoryOverrides: categoryOverrides }, { merge: true })  // ← changed line
+        .then(() => { syncing = false; })
+        .catch(() => { syncing = false; });
+    renderList();
+    renderMap();
+    renderHistory();
+    updateCompleteTripButton();
+}
+
         function sendPush(message) {
           fetch('https://ntfy.sh/grocery-gang-humba-wumba', {
             method: 'POST',
