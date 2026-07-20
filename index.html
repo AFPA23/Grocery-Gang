@@ -1017,12 +1017,12 @@ SYNC_DOC.onSnapshot((snap) => {
             saveAndRender();
         }
 
-        function completeTrip() {
+function completeTrip() {
     const completedItems = items.filter(item => item.completed);
     if (completedItems.length === 0) return;
 
     sendPush('Grocery trip completed - heading home!🏡');
-    
+
     const trip = {
         id: Date.now().toString(),
         date: new Date().toISOString(),
@@ -1033,13 +1033,26 @@ SYNC_DOC.onSnapshot((snap) => {
     };
 
     trips.push(trip);
-    SYNC_DOC.update({                                          // ← new line
-        trips: firebase.firestore.FieldValue.arrayUnion(trip)  // ← new line
-    });                                                          // ← new line
     items = items.filter(item => !item.completed);
-    saveAndRender();
-}
 
+    localStorage.setItem('groceryItems', JSON.stringify(items));
+    localStorage.setItem('trips', JSON.stringify(trips));
+
+    syncing = true;
+    SYNC_DOC.set({
+        items: items,
+        trips: firebase.firestore.FieldValue.arrayUnion(trip),
+        categoryOverrides: categoryOverrides,
+        categoryOrder: categoryOrder
+    }, { merge: true })
+      .catch(err => console.error('Trip sync failed:', err))
+      .finally(() => { syncing = false; });
+
+    renderList();
+    renderMap();
+    renderHistory();
+    updateCompleteTripButton();
+}
 
         function updateCompleteTripButton() {
             const hasCompleted = items.some(item => item.completed);
