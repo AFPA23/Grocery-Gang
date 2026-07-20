@@ -1211,8 +1211,11 @@ onEnd: function() {
     SYNC_DOC.set({ categoryOrder: categoryOrder }, { merge: true })
         .finally(() => { pendingWrites--; });
 }
+    });
+}
 
-            const unplaced = items.filter(item => !getMapZoneForItem(item.name));
+const unplaced = items.filter(item => !getMapZoneForItem(item.name));
+
             if (unplaced.length > 0) {
                 const unplacedSection = document.createElement('div');
                 unplacedSection.className = 'unplaced-section';
