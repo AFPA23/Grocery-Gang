@@ -270,18 +270,19 @@
             text-align: center;
             padding: 20px;
         }
-.drag-handle {
-    cursor: grab;
-    color: var(--gray);
-    font-size: 18px;
-    padding: 0 6px 0 0;
-    touch-action: none;
-    user-select: none;
-    line-height: 1;
-}
-.drag-handle:active { cursor: grabbing; }
-.section-card.sortable-ghost { opacity: 0.4; }
-.section-card.sortable-drag { box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
+
+        .drag-handle {
+            cursor: grab;
+            color: var(--gray);
+            font-size: 18px;
+            padding: 0 6px 0 0;
+            touch-action: none;
+            user-select: none;
+            line-height: 1;
+        }
+        .drag-handle:active { cursor: grabbing; }
+        .section-card.sortable-ghost { opacity: 0.4; }
+        .section-card.sortable-drag { box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
 
         /* History View */
         .history-date-group {
@@ -512,14 +513,6 @@
             }
             .view-select {
                 display: block;
-            }
-        }
-            .map-cell-label {
-                font-size: 7px;
-            }
-            .map-item-dot {
-                font-size: 6px;
-                padding: 1px 2px;
             }
         }
 
@@ -934,14 +927,14 @@
 
         let items = JSON.parse(localStorage.getItem('groceryItems')) || [];
         let trips = JSON.parse(localStorage.getItem('trips')) || [];
-let categoryOverrides = JSON.parse(localStorage.getItem('categoryOverrides')) || {};
-let categoryOrder = JSON.parse(localStorage.getItem('categoryOrder')) || [];
-let currentView = 'list';
-let syncing = false;
-let sortableInstance = null;
+        let categoryOverrides = JSON.parse(localStorage.getItem('categoryOverrides')) || {};
+        let categoryOrder = JSON.parse(localStorage.getItem('categoryOrder')) || [];
+        let currentView = 'list';
+        let pendingWrites = 0;  // was: let syncing = false;
+        let sortableInstance = null;
 
 SYNC_DOC.onSnapshot((snap) => {
-    if (syncing) return;
+    if (pendingWrites > 0) return;   // was: if (syncing) return;
     const data = snap.data();
     if (data) {
         items = data.items || [];
@@ -969,6 +962,14 @@ SYNC_DOC.onSnapshot((snap) => {
         const historyView = document.getElementById('history-view');
         const completeTripBtn = document.getElementById('complete-trip-btn');
         const viewBtns = document.querySelectorAll('.view-btn');
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            if (!toast) return;
+            toast.textContent = 'Item added!';
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
 
         function getCategory(name) {
             const zone = getMapZoneForItem(name);
@@ -998,7 +999,6 @@ SYNC_DOC.onSnapshot((snap) => {
 
             items.push(newItem);
             sendPush(`${name} added to the list 🛒`);
-            // Clear input immediately before render
             itemNameInput.value = '';
             detectedSectionEl.innerHTML = '';
             
@@ -1017,42 +1017,26 @@ SYNC_DOC.onSnapshot((snap) => {
             saveAndRender();
         }
 
-function completeTrip() {
-    const completedItems = items.filter(item => item.completed);
-    if (completedItems.length === 0) return;
+        function completeTrip() {
+            const completedItems = items.filter(item => item.completed);
+            if (completedItems.length === 0) return;
 
-    sendPush('Grocery trip completed - heading home!🏡');
+            sendPush('Grocery trip completed - heading home!🏡');
 
-    const trip = {
-        id: Date.now().toString(),
-        date: new Date().toISOString(),
-        items: completedItems.map(item => ({
-            name: item.name,
-            section: item.category
-        }))
-    };
+            const trip = {
+                id: Date.now().toString(),
+                date: new Date().toISOString(),
+                items: completedItems.map(item => ({
+                    name: item.name,
+                    section: item.category
+                }))
+            };
 
-    trips.push(trip);
-    items = items.filter(item => !item.completed);
+            trips.push(trip);
+            items = items.filter(item => !item.completed);
 
-    localStorage.setItem('groceryItems', JSON.stringify(items));
-    localStorage.setItem('trips', JSON.stringify(trips));
-
-    syncing = true;
-    SYNC_DOC.set({
-        items: items,
-        trips: firebase.firestore.FieldValue.arrayUnion(trip),
-        categoryOverrides: categoryOverrides,
-        categoryOrder: categoryOrder
-    }, { merge: true })
-      .catch(err => console.error('Trip sync failed:', err))
-      .finally(() => { syncing = false; });
-
-    renderList();
-    renderMap();
-    renderHistory();
-    updateCompleteTripButton();
-}
+            saveAndRender();
+        }
 
         function updateCompleteTripButton() {
             const hasCompleted = items.some(item => item.completed);
@@ -1075,10 +1059,16 @@ function saveAndRender() {
     localStorage.setItem('trips', JSON.stringify(trips));
     localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
     localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
-    syncing = true;
-    SYNC_DOC.set({ items: items, categoryOverrides: categoryOverrides, categoryOrder: categoryOrder }, { merge: true })
-        .then(() => { syncing = false; })
-        .catch(() => { syncing = false; });
+
+    pendingWrites++;
+    SYNC_DOC.set({
+        items: items,
+        trips: trips,
+        categoryOverrides: categoryOverrides,
+        categoryOrder: categoryOrder
+    }, { merge: true })
+        .finally(() => { pendingWrites--; });
+
     renderList();
     renderMap();
     renderHistory();
@@ -1089,7 +1079,7 @@ function saveAndRender() {
           fetch('https://ntfy.sh/grocery-gang-humba-wumba', {
             method: 'POST',
             body: message
-          }).catch(() => {}); // fail silently if offline
+          }).catch(() => {});
         }
 
         function getGroupedItems() {
@@ -1102,181 +1092,177 @@ function saveAndRender() {
             return grouped;
         }
 
-function createCategoryCard(label, catItems, color) {
-    const card = document.createElement('div');
-    card.className = 'section-card';
-    card.dataset.category = label;
-    card.style.borderTopColor = color;
+        function createCategoryCard(label, catItems, color) {
+            const card = document.createElement('div');
+            card.className = 'section-card';
+            card.dataset.category = label;
+            card.style.borderTopColor = color;
 
-    const header = document.createElement('div');
-    header.className = 'section-card-header';
+            const header = document.createElement('div');
+            header.className = 'section-card-header';
 
-    const handle = document.createElement('span');
-    handle.className = 'drag-handle';
-    handle.textContent = '⠿';
-    handle.title = 'Drag to reorder';
+            const handle = document.createElement('span');
+            handle.className = 'drag-handle';
+            handle.textContent = '⠿';
+            handle.title = 'Drag to reorder';
 
-    const title = document.createElement('h3');
-    title.className = 'section-card-title';
-    title.textContent = label;
-    title.style.color = color;
+            const title = document.createElement('h3');
+            title.className = 'section-card-title';
+            title.textContent = label;
+            title.style.color = color;
 
-    const count = document.createElement('span');
-    count.className = 'section-card-count';
-    const activeItems = catItems.filter(i => !i.completed).length;
-    count.textContent = `${activeItems} item${activeItems !== 1 ? 's' : ''}`;
+            const count = document.createElement('span');
+            count.className = 'section-card-count';
+            const activeItems = catItems.filter(i => !i.completed).length;
+            count.textContent = `${activeItems} item${activeItems !== 1 ? 's' : ''}`;
 
-    header.appendChild(handle);
-    header.appendChild(title);
-    header.appendChild(count);
-    card.appendChild(header);
+            header.appendChild(handle);
+            header.appendChild(title);
+            header.appendChild(count);
+            card.appendChild(header);
 
-    catItems.forEach(item => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'section-card-item';
+            catItems.forEach(item => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'section-card-item';
 
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'section-card-item-content';
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'section-card-item-content';
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'checkbox';
-        checkbox.checked = item.completed;
-        checkbox.onchange = () => toggleComplete(item.id);
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'checkbox';
+                checkbox.checked = item.completed;
+                checkbox.onchange = () => toggleComplete(item.id);
 
-        const itemLabel = document.createElement('label');
-        itemLabel.className = item.completed ? 'completed-label' : '';
-        itemLabel.textContent = item.name;
+                const itemLabel = document.createElement('label');
+                itemLabel.className = item.completed ? 'completed-label' : '';
+                itemLabel.textContent = item.name;
 
-        contentDiv.appendChild(checkbox);
-        contentDiv.appendChild(itemLabel);
+                contentDiv.appendChild(checkbox);
+                contentDiv.appendChild(itemLabel);
 
-        const moveBtn = document.createElement('button');
-        moveBtn.className = 'move-item-btn';
-        moveBtn.textContent = 'Move';
-        moveBtn.onclick = (e) => { e.stopPropagation(); showZonePicker(moveBtn, item); };
+                const moveBtn = document.createElement('button');
+                moveBtn.className = 'move-item-btn';
+                moveBtn.textContent = 'Move';
+                moveBtn.onclick = (e) => { e.stopPropagation(); showZonePicker(moveBtn, item); };
 
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'delete-item-btn';
-        deleteBtn.textContent = '✕';
-        deleteBtn.title = 'Delete item';
-        deleteBtn.onclick = (e) => { e.stopPropagation(); deleteItem(item.id); };
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-item-btn';
+                deleteBtn.textContent = '✕';
+                deleteBtn.title = 'Delete item';
+                deleteBtn.onclick = (e) => { e.stopPropagation(); deleteItem(item.id); };
 
-        itemDiv.appendChild(contentDiv);
-        itemDiv.appendChild(moveBtn);
-        itemDiv.appendChild(deleteBtn);
-        card.appendChild(itemDiv);
-    });
+                itemDiv.appendChild(contentDiv);
+                itemDiv.appendChild(moveBtn);
+                itemDiv.appendChild(deleteBtn);
+                card.appendChild(itemDiv);
+            });
 
-    return card;
-}
+            return card;
+        }
 
-function getCategoryDisplayOrder(visibleCats) {
-    const defaultOrder = MAP_ZONES.map(z => z.label).concat(['Other']);
-    const known = visibleCats.filter(c => categoryOrder.includes(c));
-    const unknown = visibleCats.filter(c => !categoryOrder.includes(c));
-    known.sort((a, b) => categoryOrder.indexOf(a) - categoryOrder.indexOf(b));
-    unknown.sort((a, b) => defaultOrder.indexOf(a) - defaultOrder.indexOf(b));
-    return [...known, ...unknown];
-}
+        function getCategoryDisplayOrder(visibleCats) {
+            const defaultOrder = MAP_ZONES.map(z => z.label).concat(['Other']);
+            const known = visibleCats.filter(c => categoryOrder.includes(c));
+            const unknown = visibleCats.filter(c => !categoryOrder.includes(c));
+            known.sort((a, b) => categoryOrder.indexOf(a) - categoryOrder.indexOf(b));
+            unknown.sort((a, b) => defaultOrder.indexOf(a) - defaultOrder.indexOf(b));
+            return [...known, ...unknown];
+        }
 
-function renderList() {
-    listView.innerHTML = '';
-    if (items.length === 0) {
-        listView.innerHTML = '<div class="empty-state">Your grocery list is empty. Start adding items!</div>';
-        return;
-    }
-
-    const grouped = getGroupedItems();
-    const grid = document.createElement('div');
-    grid.className = 'section-grid';
-
-    const visibleCats = Object.keys(grouped).filter(cat => grouped[cat].length > 0);
-    const displayOrder = getCategoryDisplayOrder(visibleCats);
-
-    displayOrder.forEach(category => {
-        const catItems = grouped[category];
-        if (!catItems || catItems.length === 0) return;
-        const zone = MAP_ZONES.find(z => z.label === category);
-        const color = zone ? zone.color : 'var(--gray)';
-        grid.appendChild(createCategoryCard(category, catItems, color));
-    });
-
-    listView.appendChild(grid);
-
-    if (sortableInstance) {
-        sortableInstance.destroy();
-        sortableInstance = null;
-    }
-    if (typeof Sortable !== 'undefined' && grid.children.length > 1) {
-        sortableInstance = new Sortable(grid, {
-            handle: '.drag-handle',
-            animation: 150,
-            onEnd: function() {
-                const newVisibleOrder = Array.from(grid.children).map(c => c.dataset.category);
-                const hiddenOrder = categoryOrder.filter(c => !newVisibleOrder.includes(c));
-                categoryOrder = [...newVisibleOrder, ...hiddenOrder];
-                localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
-                syncing = true;
-                SYNC_DOC.set({ categoryOrder: categoryOrder }, { merge: true })
-                    .then(() => { syncing = false; })
-                    .catch(() => { syncing = false; });
+        function renderList() {
+            listView.innerHTML = '';
+            if (items.length === 0) {
+                listView.innerHTML = '<div class="empty-state">Your grocery list is empty. Start adding items!</div>';
+                return;
             }
-        });
-    }
 
-    const unplaced = items.filter(item => !getMapZoneForItem(item.name));
-    if (unplaced.length > 0) {
-        const unplacedSection = document.createElement('div');
-        unplacedSection.className = 'unplaced-section';
+            const grouped = getGroupedItems();
+            const grid = document.createElement('div');
+            grid.className = 'section-grid';
 
-        const title = document.createElement('div');
-        title.className = 'unplaced-title';
-        title.textContent = `⚠ Unplaced Items (${unplaced.length})`;
-        unplacedSection.appendChild(title);
+            const visibleCats = Object.keys(grouped).filter(cat => grouped[cat].length > 0);
+            const displayOrder = getCategoryDisplayOrder(visibleCats);
 
-        const itemsList = document.createElement('div');
-        itemsList.className = 'unplaced-items-list';
+            displayOrder.forEach(category => {
+                const catItems = grouped[category];
+                if (!catItems || catItems.length === 0) return;
+                const zone = MAP_ZONES.find(z => z.label === category);
+                const color = zone ? zone.color : 'var(--gray)';
+                grid.appendChild(createCategoryCard(category, catItems, color));
+            });
 
-        unplaced.forEach(item => {
-            const itemRow = document.createElement('div');
-            itemRow.className = 'unplaced-item';
+            listView.appendChild(grid);
 
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'unplaced-item-name';
-            nameSpan.textContent = item.name;
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'unplaced-item-checkbox';
-            checkbox.checked = item.completed;
-            checkbox.onchange = () => toggleComplete(item.id);
-
-            const moveBtn = document.createElement('button');
-            moveBtn.className = 'move-item-btn';
-            moveBtn.textContent = 'Assign';
-            moveBtn.style.marginLeft = '8px';
-            moveBtn.onclick = (e) => { e.stopPropagation(); showZonePicker(moveBtn, item); };
-
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'delete-item-btn';
-            deleteBtn.textContent = '✕';
-            deleteBtn.title = 'Delete item';
-            deleteBtn.style.marginLeft = '4px';
-            deleteBtn.onclick = (e) => { e.stopPropagation(); deleteItem(item.id); };
-
-            itemRow.appendChild(nameSpan);
-            itemRow.appendChild(checkbox);
-            itemRow.appendChild(moveBtn);
-            itemRow.appendChild(deleteBtn);
-            itemsList.appendChild(itemRow);
-        });
-
-        unplacedSection.appendChild(itemsList);
-        listView.appendChild(unplacedSection);
-    }
+            if (sortableInstance) {
+                sortableInstance.destroy();
+                sortableInstance = null;
+            }
+            if (typeof Sortable !== 'undefined' && grid.children.length > 1) {
+                sortableInstance = new Sortable(grid, {
+                    handle: '.drag-handle',
+                    animation: 150,
+onEnd: function() {
+    const newVisibleOrder = Array.from(grid.children).map(c => c.dataset.category);
+    const hiddenOrder = categoryOrder.filter(c => !newVisibleOrder.includes(c));
+    categoryOrder = [...newVisibleOrder, ...hiddenOrder];
+    localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
+    pendingWrites++;
+    SYNC_DOC.set({ categoryOrder: categoryOrder }, { merge: true })
+        .finally(() => { pendingWrites--; });
 }
 
+            const unplaced = items.filter(item => !getMapZoneForItem(item.name));
+            if (unplaced.length > 0) {
+                const unplacedSection = document.createElement('div');
+                unplacedSection.className = 'unplaced-section';
+
+                const title = document.createElement('div');
+                title.className = 'unplaced-title';
+                title.textContent = `⚠ Unplaced Items (${unplaced.length})`;
+                unplacedSection.appendChild(title);
+
+                const itemsList = document.createElement('div');
+                itemsList.className = 'unplaced-items-list';
+
+                unplaced.forEach(item => {
+                    const itemRow = document.createElement('div');
+                    itemRow.className = 'unplaced-item';
+
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'unplaced-item-name';
+                    nameSpan.textContent = item.name;
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'unplaced-item-checkbox';
+                    checkbox.checked = item.completed;
+                    checkbox.onchange = () => toggleComplete(item.id);
+
+                    const moveBtn = document.createElement('button');
+                    moveBtn.className = 'move-item-btn';
+                    moveBtn.textContent = 'Assign';
+                    moveBtn.style.marginLeft = '8px';
+                    moveBtn.onclick = (e) => { e.stopPropagation(); showZonePicker(moveBtn, item); };
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-item-btn';
+                    deleteBtn.textContent = '✕';
+                    deleteBtn.title = 'Delete item';
+                    deleteBtn.style.marginLeft = '4px';
+                    deleteBtn.onclick = (e) => { e.stopPropagation(); deleteItem(item.id); };
+
+                    itemRow.appendChild(nameSpan);
+                    itemRow.appendChild(checkbox);
+                    itemRow.appendChild(moveBtn);
+                    itemRow.appendChild(deleteBtn);
+                    itemsList.appendChild(itemRow);
+                });
+
+                unplacedSection.appendChild(itemsList);
+                listView.appendChild(unplacedSection);
+            }
+        }
 
         function renderHistory() {
             historyView.innerHTML = '';
@@ -1303,7 +1289,6 @@ function renderList() {
             `;
             historyView.appendChild(stats);
 
-            // Group trips by date (most recent first)
             const groupedTrips = {};
             trips.slice().reverse().forEach(trip => {
                 const key = trip.date.slice(0, 10);
@@ -1738,8 +1723,6 @@ function renderList() {
             const picker = document.createElement('div');
             picker.className = 'zone-picker';
             
-            // Build the picker with options first to calculate height
-            // Add Uncategorized option first
             const uncatOpt = document.createElement('div');
             uncatOpt.style.cssText = 'padding:6px 10px;cursor:pointer;border-radius:4px;font-size:13px;display:flex;align-items:center;gap:8px;background:var(--light-gray);margin-bottom:4px;border-bottom:1px solid var(--border)';
             uncatOpt.onmouseenter = () => uncatOpt.style.background = '#ffebee';
@@ -1784,11 +1767,9 @@ function renderList() {
                 picker.appendChild(opt);
             });
 
-            // Temporarily add to DOM to calculate dimensions
             picker.style.cssText = 'position:fixed;visibility:hidden;background:white;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);padding:8px;z-index:300;max-height:240px;overflow-y:auto;min-width:180px';
             document.body.appendChild(picker);
             
-            // Calculate positions
             const rect = anchor.getBoundingClientRect();
             const pickerHeight = picker.offsetHeight;
             const pickerWidth = picker.offsetWidth;
@@ -1796,7 +1777,6 @@ function renderList() {
             const viewportWidth = window.innerWidth;
             const padding = 8;
             
-            // Calculate vertical position (prefer bottom, but go top if needed)
             let top;
             const spaceBelow = viewportHeight - rect.bottom;
             const spaceAbove = rect.top;
@@ -1806,7 +1786,6 @@ function renderList() {
             } else if (spaceAbove >= pickerHeight + padding) {
                 top = rect.top - pickerHeight - padding;
             } else {
-                // Constrain to viewport: use whatever space is larger
                 if (spaceBelow > spaceAbove) {
                     top = Math.max(padding, viewportHeight - pickerHeight - padding);
                 } else {
@@ -1814,11 +1793,9 @@ function renderList() {
                 }
             }
             
-            // Calculate horizontal position (center on anchor, but constrain to viewport)
             let left = rect.left + rect.width / 2 - pickerWidth / 2;
             left = Math.max(padding, Math.min(left, viewportWidth - pickerWidth - padding));
             
-            // Apply final position
             picker.style.cssText = `position:fixed;top:${top}px;left:${left}px;background:white;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);padding:8px;z-index:300;max-height:240px;overflow-y:auto;min-width:180px;visibility:visible`;
 
             const closePicker = (e) => {
@@ -1901,7 +1878,6 @@ function renderList() {
             scrollWrap.appendChild(grid);
             mapView.appendChild(scrollWrap);
 
-            // Unplaced items
             const unplaced = items.filter(item => {
                 return !item.completed && !getMapZoneForItem(item.name);
             });
@@ -2021,7 +1997,6 @@ function renderList() {
             }
         });
 
-        // Initial render from local cache, then Firestore keeps it in sync
         renderList();
         renderMap();
         renderHistory();
@@ -2029,3 +2004,4 @@ function renderList() {
     </script>
 </body>
 </html>
+
