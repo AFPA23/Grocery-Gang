@@ -930,29 +930,75 @@
         let categoryOverrides = JSON.parse(localStorage.getItem('categoryOverrides')) || {};
         let categoryOrder = JSON.parse(localStorage.getItem('categoryOrder')) || [];
         let currentView = 'list';
-        let pendingWrites = 0;  // was: let syncing = false;
+        let pendingWrites = 0;
         let sortableInstance = null;
 
-SYNC_DOC.onSnapshot((snap) => {
-    if (pendingWrites > 0) return;   // was: if (syncing) return;
-    const data = snap.data();
-    if (data) {
-        items = data.items || [];
-        trips = data.trips || [];
-        categoryOverrides = data.categoryOverrides || {};
-        categoryOrder = data.categoryOrder || [];
-        localStorage.setItem('groceryItems', JSON.stringify(items));
-        localStorage.setItem('trips', JSON.stringify(trips));
-        localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
-        localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
-        renderList();
-        renderMap();
-        renderHistory();
-        updateCompleteTripButton();
-    } else {
-        SYNC_DOC.set({ items: items, trips: trips, categoryOverrides: categoryOverrides, categoryOrder: categoryOrder });
-    }
-});
+        // --- Sync core -------------------------------------------------
+        // Every mutation goes through syncMutation(mutate), where `mutate`
+        // is a pure function: (state) => newState. It applies instantly to
+        // local state for a snappy UI, then re-applies the SAME pure
+        // function against the live server document inside a Firestore
+        // transaction. If another device wrote in between, Firestore
+        // retries the transaction against the fresh data automatically,
+        // so concurrent writes from multiple tabs/devices can never
+        // silently clobber each other.
+
+        function currentState() {
+            return { items, trips, categoryOverrides, categoryOrder };
+        }
+
+        function applyLocally(state) {
+            items = state.items;
+            trips = state.trips;
+            categoryOverrides = state.categoryOverrides;
+            categoryOrder = state.categoryOrder;
+            localStorage.setItem('groceryItems', JSON.stringify(items));
+            localStorage.setItem('trips', JSON.stringify(trips));
+            localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
+            localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
+            renderList();
+            renderMap();
+            renderHistory();
+            updateCompleteTripButton();
+        }
+
+        function syncMutation(mutate) {
+            // Instant local feedback
+            applyLocally(mutate(currentState()));
+
+            pendingWrites++;
+            db.runTransaction(async (tx) => {
+                const snap = await tx.get(SYNC_DOC);
+                const server = snap.data() || {};
+                const serverState = {
+                    items: server.items || [],
+                    trips: server.trips || [],
+                    categoryOverrides: server.categoryOverrides || {},
+                    categoryOrder: server.categoryOrder || []
+                };
+                const next = mutate(serverState);
+                tx.set(SYNC_DOC, next);
+            }).catch((err) => {
+                console.error('Sync transaction failed:', err);
+            }).finally(() => {
+                pendingWrites--;
+            });
+        }
+
+        SYNC_DOC.onSnapshot((snap) => {
+            if (pendingWrites > 0) return;
+            const data = snap.data();
+            if (data) {
+                applyLocally({
+                    items: data.items || [],
+                    trips: data.trips || [],
+                    categoryOverrides: data.categoryOverrides || {},
+                    categoryOrder: data.categoryOrder || []
+                });
+            } else {
+                SYNC_DOC.set({ items, trips, categoryOverrides, categoryOrder });
+            }
+        });
 
         const form = document.getElementById('item-form');
         const itemNameInput = document.getElementById('item-name');
@@ -991,51 +1037,55 @@ SYNC_DOC.onSnapshot((snap) => {
             if (!name) return;
 
             const newItem = {
-                id: Date.now().toString(),
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
                 name: name,
                 category: getCategory(name),
                 completed: false
             };
 
-            items.push(newItem);
             sendPush(`${name} added to the list 🛒`);
             itemNameInput.value = '';
             detectedSectionEl.innerHTML = '';
-            
-            saveAndRender();
+
+            syncMutation(state => ({ ...state, items: [...state.items, newItem] }));
+
             showToast();
             itemNameInput.focus();
         });
 
         function toggleComplete(id) {
-            items = items.map(item => {
-                if (item.id === id) {
-                    return { ...item, completed: !item.completed };
-                }
-                return item;
-            });
-            saveAndRender();
+            syncMutation(state => ({
+                ...state,
+                items: state.items.map(item =>
+                    item.id === id ? { ...item, completed: !item.completed } : item
+                )
+            }));
         }
 
         function completeTrip() {
-            const completedItems = items.filter(item => item.completed);
-            if (completedItems.length === 0) return;
+            if (!items.some(item => item.completed)) return;
 
             sendPush('Grocery trip completed - heading home!🏡');
 
-            const trip = {
-                id: Date.now().toString(),
-                date: new Date().toISOString(),
-                items: completedItems.map(item => ({
-                    name: item.name,
-                    section: item.category
-                }))
-            };
+            syncMutation(state => {
+                const completedItems = state.items.filter(item => item.completed);
+                if (completedItems.length === 0) return state;
 
-            trips.push(trip);
-            items = items.filter(item => !item.completed);
+                const trip = {
+                    id: Date.now().toString(),
+                    date: new Date().toISOString(),
+                    items: completedItems.map(item => ({
+                        name: item.name,
+                        section: item.category
+                    }))
+                };
 
-            saveAndRender();
+                return {
+                    ...state,
+                    trips: [...state.trips, trip],
+                    items: state.items.filter(item => !item.completed)
+                };
+            });
         }
 
         function updateCompleteTripButton() {
@@ -1050,30 +1100,11 @@ SYNC_DOC.onSnapshot((snap) => {
         completeTripBtn.addEventListener('click', completeTrip);
 
         function deleteItem(id) {
-            items = items.filter(item => item.id !== id);
-            saveAndRender();
+            syncMutation(state => ({
+                ...state,
+                items: state.items.filter(item => item.id !== id)
+            }));
         }
-
-function saveAndRender() {
-    localStorage.setItem('groceryItems', JSON.stringify(items));
-    localStorage.setItem('trips', JSON.stringify(trips));
-    localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
-    localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
-
-    pendingWrites++;
-    SYNC_DOC.set({
-        items: items,
-        trips: trips,
-        categoryOverrides: categoryOverrides,
-        categoryOrder: categoryOrder
-    }, { merge: true })
-        .finally(() => { pendingWrites--; });
-
-    renderList();
-    renderMap();
-    renderHistory();
-    updateCompleteTripButton();
-}
 
         function sendPush(message) {
           fetch('https://ntfy.sh/grocery-gang-humba-wumba', {
@@ -1202,20 +1233,17 @@ function saveAndRender() {
                 sortableInstance = new Sortable(grid, {
                     handle: '.drag-handle',
                     animation: 150,
-onEnd: function() {
-    const newVisibleOrder = Array.from(grid.children).map(c => c.dataset.category);
-    const hiddenOrder = categoryOrder.filter(c => !newVisibleOrder.includes(c));
-    categoryOrder = [...newVisibleOrder, ...hiddenOrder];
-    localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
-    pendingWrites++;
-    SYNC_DOC.set({ categoryOrder: categoryOrder }, { merge: true })
-        .finally(() => { pendingWrites--; });
-}
-    });
-}
+                    onEnd: function() {
+                        const newVisibleOrder = Array.from(grid.children).map(c => c.dataset.category);
+                        syncMutation(state => {
+                            const hiddenOrder = state.categoryOrder.filter(c => !newVisibleOrder.includes(c));
+                            return { ...state, categoryOrder: [...newVisibleOrder, ...hiddenOrder] };
+                        });
+                    }
+                });
+            }
 
-const unplaced = items.filter(item => !getMapZoneForItem(item.name));
-
+            const unplaced = items.filter(item => !getMapZoneForItem(item.name));
             if (unplaced.length > 0) {
                 const unplacedSection = document.createElement('div');
                 unplacedSection.className = 'unplaced-section';
@@ -1736,10 +1764,12 @@ const unplaced = items.filter(item => !getMapZoneForItem(item.name));
             uncatOpt.appendChild(document.createTextNode('Uncategorized'));
             uncatOpt.onclick = () => {
                 const lower = item.name.toLowerCase().trim();
-                delete categoryOverrides[lower];
-                localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
                 picker.remove();
-                saveAndRender();
+                syncMutation(state => {
+                    const overrides = { ...state.categoryOverrides };
+                    delete overrides[lower];
+                    return { ...state, categoryOverrides: overrides };
+                });
                 const overlay = document.getElementById('map-overlay');
                 if (overlay && overlay.classList.contains('open')) {
                     overlay.classList.remove('open');
@@ -1758,10 +1788,11 @@ const unplaced = items.filter(item => !getMapZoneForItem(item.name));
                 opt.appendChild(document.createTextNode(z.label));
                 opt.onclick = () => {
                     const lower = item.name.toLowerCase().trim();
-                    categoryOverrides[lower] = z.id;
-                    localStorage.setItem('categoryOverrides', JSON.stringify(categoryOverrides));
                     picker.remove();
-                    saveAndRender();
+                    syncMutation(state => ({
+                        ...state,
+                        categoryOverrides: { ...state.categoryOverrides, [lower]: z.id }
+                    }));
                     const overlay = document.getElementById('map-overlay');
                     if (overlay && overlay.classList.contains('open')) {
                         overlay.classList.remove('open');
@@ -2007,4 +2038,3 @@ const unplaced = items.filter(item => !getMapZoneForItem(item.name));
     </script>
 </body>
 </html>
-
