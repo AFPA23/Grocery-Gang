@@ -242,8 +242,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 14px;
-            padding-bottom: 10px;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
             border-bottom: 2px solid var(--primary-light);
         }
 
@@ -262,6 +262,28 @@
             background: var(--light-gray);
             padding: 2px 10px;
             border-radius: 10px;
+        }
+
+        .collapse-btn {
+            background: none;
+            border: none;
+            color: var(--gray);
+            font-size: 14px;
+            cursor: pointer;
+            padding: 4px;
+            margin-left: 8px;
+            transition: transform 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .section-card.collapsed > *:not(.section-card-header) {
+            display: none;
+        }
+
+        .section-card.collapsed .collapse-btn {
+            transform: rotate(-90deg);
         }
 
         .section-card-empty {
@@ -901,6 +923,7 @@
             <input type="text" id="item-name" placeholder="Add an item (e.g., Tortellini, pesto, more tortellini)" required autocomplete="off">
             <button type="submit">Add</button>
         </form>
+  
         <div id="detected-section" class="detected-section"></div>
     </div>
 
@@ -933,16 +956,6 @@
         let pendingWrites = 0;
         let sortableInstance = null;
 
-        // --- Sync core -------------------------------------------------
-        // Every mutation goes through syncMutation(mutate), where `mutate`
-        // is a pure function: (state) => newState. It applies instantly to
-        // local state for a snappy UI, then re-applies the SAME pure
-        // function against the live server document inside a Firestore
-        // transaction. If another device wrote in between, Firestore
-        // retries the transaction against the fresh data automatically,
-        // so concurrent writes from multiple tabs/devices can never
-        // silently clobber each other.
-
         function currentState() {
             return { items, trips, categoryOverrides, categoryOrder };
         }
@@ -963,9 +976,7 @@
         }
 
         function syncMutation(mutate) {
-            // Instant local feedback
             applyLocally(mutate(currentState()));
-
             pendingWrites++;
             db.runTransaction(async (tx) => {
                 const snap = await tx.get(SYNC_DOC);
@@ -1064,7 +1075,6 @@
 
         function completeTrip() {
             if (!items.some(item => item.completed)) return;
-
             sendPush('Grocery trip completed - heading home!🏡');
 
             syncMutation(state => {
@@ -1147,9 +1157,24 @@
             const activeItems = catItems.filter(i => !i.completed).length;
             count.textContent = `${activeItems} item${activeItems !== 1 ? 's' : ''}`;
 
+            const collapseBtn = document.createElement('button');
+            collapseBtn.className = 'collapse-btn';
+            collapseBtn.textContent = '▼';
+            collapseBtn.title = 'Toggle visibility';
+            collapseBtn.onclick = (e) => {
+                e.stopPropagation();
+                card.classList.toggle('collapsed');
+            };
+
+            const headerRight = document.createElement('div');
+            headerRight.style.display = 'flex';
+            headerRight.style.alignItems = 'center';
+            headerRight.appendChild(count);
+            headerRight.appendChild(collapseBtn);
+
             header.appendChild(handle);
             header.appendChild(title);
-            header.appendChild(count);
+            header.appendChild(headerRight);
             card.appendChild(header);
 
             catItems.forEach(item => {
@@ -1168,6 +1193,18 @@
                 const itemLabel = document.createElement('label');
                 itemLabel.className = item.completed ? 'completed-label' : '';
                 itemLabel.textContent = item.name;
+                
+                // Allow users to edit item names when tapped
+                itemLabel.onclick = (e) => {
+                    e.preventDefault();
+                    const newName = prompt("Edit item:", item.name);
+                    if (newName && newName.trim() !== "" && newName !== item.name) {
+                        syncMutation(state => ({
+                            ...state,
+                            items: state.items.map(i => i.id === item.id ? { ...i, name: newName.trim(), category: getCategory(newName.trim()) } : i)
+                        }));
+                    }
+                };
 
                 contentDiv.appendChild(checkbox);
                 contentDiv.appendChild(itemLabel);
@@ -1214,7 +1251,6 @@
 
             const visibleCats = Object.keys(grouped).filter(cat => grouped[cat].length > 0);
             const displayOrder = getCategoryDisplayOrder(visibleCats);
-
             displayOrder.forEach(category => {
                 const catItems = grouped[category];
                 if (!catItems || catItems.length === 0) return;
@@ -1222,7 +1258,6 @@
                 const color = zone ? zone.color : 'var(--gray)';
                 grid.appendChild(createCategoryCard(category, catItems, color));
             });
-
             listView.appendChild(grid);
 
             if (sortableInstance) {
@@ -1252,7 +1287,6 @@
                 title.className = 'unplaced-title';
                 title.textContent = `⚠ Unplaced Items (${unplaced.length})`;
                 unplacedSection.appendChild(title);
-
                 const itemsList = document.createElement('div');
                 itemsList.className = 'unplaced-items-list';
 
@@ -1304,7 +1338,6 @@
 
             const scrollContainer = document.createElement('div');
             scrollContainer.className = 'history-scroll';
-
             const total = trips.reduce((sum, trip) => sum + trip.items.length, 0);
             const stats = document.createElement('div');
             stats.className = 'history-stats';
@@ -1326,7 +1359,6 @@
                 if (!groupedTrips[key]) groupedTrips[key] = [];
                 groupedTrips[key].push(trip);
             });
-
             Object.entries(groupedTrips).forEach(([dateStr, dateTrips]) => {
                 const group = document.createElement('div');
                 group.className = 'history-date-group';
@@ -1350,11 +1382,9 @@
                     timeEl.className = 'trip-date';
                     const tripTime = new Date(trip.date);
                     timeEl.textContent = tripTime.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-
                     const countEl = document.createElement('span');
                     countEl.className = 'trip-count';
                     countEl.textContent = `${trip.items.length} item${trip.items.length !== 1 ? 's' : ''}`;
-
                     const toggleIcon = document.createElement('span');
                     toggleIcon.className = 'trip-toggle-icon';
                     toggleIcon.textContent = '▼';
@@ -1385,11 +1415,9 @@
                     });
 
                     tripCard.appendChild(itemsContainer);
-
                     tripCard.addEventListener('click', () => {
                         tripCard.classList.toggle('expanded');
                     });
-
                     group.appendChild(tripCard);
                 });
 
@@ -1401,274 +1429,135 @@
 
         const MAP_ZONES = [
             {
-                id: 'milk',
-                label: 'Milk',
-                color: '#00bcd4',
-                cols: ['A'], rows: [1],
-                keywords: ['milk', 'soy milk', 'almond milk', 'oat milk', 'chocolate milk',
-                    'lactose free milk', 'evaporated milk', 'condensed milk']
+                id: 'milk', label: 'Milk', color: '#00bcd4', cols: ['A'], rows: [1],
+                keywords: ['milk', 'soy milk', 'almond milk', 'oat milk', 'chocolate milk', 'lactose free milk', 'evaporated milk', 'condensed milk']
             },
             {
-                id: 'cream_cheese',
-                label: 'Cream Cheese',
-                color: '#4dd0e1',
-                cols: ['B'], rows: [1],
+                id: 'cream_cheese', label: 'Cream Cheese', color: '#4dd0e1', cols: ['B'], rows: [1],
                 keywords: ['cream cheese', 'neufchatel']
             },
             {
-                id: 'eggs_cheese',
-                label: 'Eggs & Cheese',
-                color: '#fdd835',
-                cols: ['A'], rows: [2],
-                keywords: ['egg', 'eggs', 'cheddar', 'mozzarella', 'swiss', 'provolone',
-                    'american cheese', 'cheese slice', 'cheese slices', 'shredded cheese',
-                    'cheese block', 'cheese stick', 'string cheese', 'colby jack', 'pepper jack',
-                    'monterey jack', 'muenster', 'havarti', 'gouda']
+                id: 'eggs_cheese', label: 'Eggs & Cheese', color: '#fdd835', cols: ['A'], rows: [2],
+                keywords: ['egg', 'eggs', 'cheddar', 'mozzarella', 'swiss', 'provolone', 'american cheese', 'cheese slice', 'cheese slices', 'shredded cheese', 'cheese block', 'cheese stick', 'string cheese', 'colby jack', 'pepper jack', 'monterey jack', 'muenster', 'havarti', 'gouda']
             },
             {
-                id: 'frozen_waffles_pbj',
-                label: 'Frozen Waffles + PBJ',
-                color: '#8d6e63',
-                cols: ['C'], rows: [2],
-                keywords: ['frozen waffle', 'frozen waffles', 'waffle', 'pancake', 'pancake mix',
-                    'french toast', 'peanut butter', 'jam', 'jelly', 'nutella', 'fluff',
-                    'marshmallow fluff', 'honey', 'syrup', 'maple syrup', 'pb&j', 'pbj']
+                id: 'frozen_waffles_pbj', label: 'Frozen Waffles + PBJ', color: '#8d6e63', cols: ['C'], rows: [2],
+                keywords: ['frozen waffle', 'frozen waffles', 'waffle', 'pancake', 'pancake mix', 'french toast', 'peanut butter', 'jam', 'jelly', 'nutella', 'fluff', 'marshmallow fluff', 'honey', 'syrup', 'maple syrup', 'pb&j', 'pbj']
             },
             {
-                id: 'frozen_foods',
-                label: 'Frozen Foods',
-                color: '#64b5f6',
-                cols: ['B'], rows: [2],
-                keywords: ['frozen entree', 'frozen entrée', 'frozen pot pie', 'frozen mac',
-                    'frozen lasagna', 'frozen comfort food', 'frozen meal', 'frozen dinner',
-                    'frozen tv dinner', 'frozen fish stick', 'frozen corndog',
-                    'frozen corn dog', 'frozen snack']
+                id: 'frozen_foods', label: 'Frozen Foods', color: '#64b5f6', cols: ['B'], rows: [2],
+                keywords: ['frozen entree', 'frozen entrée', 'frozen pot pie', 'frozen mac', 'frozen lasagna', 'frozen comfort food', 'frozen meal', 'frozen dinner', 'frozen tv dinner', 'frozen fish stick', 'frozen corndog', 'frozen corn dog', 'frozen snack']
             },
             {
-                id: 'frozen_veggie',
-                label: 'Frozen Veggies',
-                color: '#43a047',
-                cols: ['B'], rows: [3],
-                keywords: ['frozen vegetable', 'frozen vegetables', 'frozen veggie',
-                    'frozen vegetarian', 'frozen broccoli', 'frozen spinach',
-                    'frozen mixed vegetable', 'frozen peas', 'frozen corn',
-                    'veggie burger', 'veggie patty', 'veggie nugget', 'meatless',
-                    'plant based frozen']
+                id: 'frozen_veggie', label: 'Frozen Veggies', color: '#43a047', cols: ['B'], rows: [3],
+                keywords: ['frozen vegetable', 'frozen vegetables', 'frozen veggie', 'frozen vegetarian', 'frozen broccoli', 'frozen spinach', 'frozen mixed vegetable', 'frozen peas', 'frozen corn', 'veggie burger', 'veggie patty', 'veggie nugget', 'meatless', 'plant based frozen']
             },
             {
-                id: 'frozen_pizza',
-                label: 'Frozen Pizza',
-                color: '#e53935',
-                cols: ['B'], rows: [4],
-                keywords: ['frozen pizza', 'pizza rolls', 'pizza bites', 'pizza bagel',
-                    'pocket pizza', 'microwave pizza']
+                id: 'frozen_pizza', label: 'Frozen Pizza', color: '#e53935', cols: ['B'], rows: [4],
+                keywords: ['frozen pizza', 'pizza rolls', 'pizza bites', 'pizza bagel', 'pocket pizza', 'microwave pizza']
             },
             {
-                id: 'hair_body',
-                label: 'Hair/Body',
-                color: '#8d6e63',
-                cols: ['D'], rows: [2],
+                id: 'hair_body', label: 'Hair/Body', color: '#8d6e63', cols: ['D'], rows: [2],
                 keywords: ['shampoo', 'conditioner', 'soap', 'body wash', 'lotion', 'deodorant', 'hair', 'body', 'shampoos']
             },
             {
-                id: 'stinky',
-                label: 'Stinky',
-                color: '#bdbdbd',
-                cols: ['D'], rows: [3],
+                id: 'stinky', label: 'Stinky', color: '#bdbdbd', cols: ['D'], rows: [3],
                 keywords: ['cheese', 'olives', 'pickles', 'fermented', 'stinky', 'smelly', 'garlic', 'onion']
             },
             {
-                id: 'baby_food',
-                label: 'Baby Food',
-                color: '#81d4fa',
-                cols: ['D'], rows: [4],
+                id: 'baby_food', label: 'Baby Food', color: '#81d4fa', cols: ['D'], rows: [4],
                 keywords: ['baby food', 'baby', 'infant', 'formula', 'baby wipes', 'diapers', 'pacifier', 'yogurt pouch', 'yogurt pouches', 'drinkable yogurt', 'yogurt tube', 'yogurt tubes', 'go-gurt', 'baby yogurt', 'kids yogurt']
             },
             {
-                id: 'frozen',
-                label: 'Frozen',
-                color: '#2196f3',
-                cols: ['A'], rows: [3],
-                keywords: ['frozen fruit', 'frozen fruits', 'frozen chicken nuggets',
-                    'frozen fries', 'frozen burrito', 'frozen berry', 'frozen']
+                id: 'frozen', label: 'Frozen', color: '#2196f3', cols: ['A'], rows: [3],
+                keywords: ['frozen fruit', 'frozen fruits', 'frozen chicken nuggets', 'frozen fries', 'frozen burrito', 'frozen berry', 'frozen']
             },
             {
-                id: 'dessert',
-                label: 'Dessert',
-                color: '#e91e63',
-                cols: ['A'], rows: [4],
-                keywords: ['ice cream', 'popsicle', 'popsicles', 'frozen yogurt', 'sherbet',
-                    'sorbet', 'gelato', 'frozen cake', 'frozen pie', 'ice cream cake',
-                    'ice cream sandwich', 'ice cream bar', 'pudding', 'gelatin', 'jello']
+                id: 'dessert', label: 'Dessert', color: '#e91e63', cols: ['A'], rows: [4],
+                keywords: ['ice cream', 'popsicle', 'popsicles', 'frozen yogurt', 'sherbet', 'sorbet', 'gelato', 'frozen cake', 'frozen pie', 'ice cream cake', 'ice cream sandwich', 'ice cream bar', 'pudding', 'gelatin', 'jello']
             },
             {
-                id: 'bread',
-                label: 'Bread',
-                color: '#8d6e63',
-                cols: ['C'], rows: [3, 4],
-                keywords: ['bread', 'tortilla', 'pita', 'naan', 'roll', 'bun', 'rye bread',
-                    'wheat bread', 'white bread', 'pumpernickel', 'baguette', 'croissant',
-                    'bagel', 'english muffin', 'ciabatta', 'focaccia', 'sourdough', 'loaf']
+                id: 'bread', label: 'Bread', color: '#8d6e63', cols: ['C'], rows: [3, 4],
+                keywords: ['bread', 'tortilla', 'pita', 'naan', 'roll', 'bun', 'rye bread', 'wheat bread', 'white bread', 'pumpernickel', 'baguette', 'croissant', 'bagel', 'english muffin', 'ciabatta', 'focaccia', 'sourdough', 'loaf']
             },
             {
-                id: 'orange_juice',
-                label: 'Orange Juice',
-                color: '#ff9800',
-                cols: ['C'], rows: [1],
+                id: 'orange_juice', label: 'Orange Juice', color: '#ff9800', cols: ['C'], rows: [1],
                 keywords: ['orange juice', 'oj']
             },
             {
-                id: 'dental',
-                label: 'Dental',
-                color: '#0d47a1',
-                cols: ['D'], rows: [1],
+                id: 'dental', label: 'Dental', color: '#0d47a1', cols: ['D'], rows: [1],
                 keywords: ['toothbrush', 'toothpaste', 'floss', 'mouthwash', 'dental', 'tooth']
             },
             {
-                id: 'tubby_yogurt',
-                label: 'Tubby Yogurt',
-                color: '#4fc3f7',
-                cols: ['E'], rows: [1],
-                keywords: ['yogurt', 'yogurt tub', 'yogurt tubs', 'greek yogurt', 'plain yogurt',
-                    'vanilla yogurt', 'large yogurt']
+                id: 'tubby_yogurt', label: 'Tubby Yogurt', color: '#4fc3f7', cols: ['E'], rows: [1],
+                keywords: ['yogurt', 'yogurt tub', 'yogurt tubs', 'greek yogurt', 'plain yogurt', 'vanilla yogurt', 'large yogurt']
             },
             {
-                id: 'bars',
-                label: 'Bars',
-                color: '#a1887f',
-                cols: ['E'], rows: [2],
-                keywords: ['granola bar', 'protein bar', 'breakfast bar', 'nutrigrain',
-                    'nature valley', 'clif bar', 'kind bar', 'granola', 'bar']
+                id: 'bars', label: 'Bars', color: '#a1887f', cols: ['E'], rows: [2],
+                keywords: ['granola bar', 'protein bar', 'breakfast bar', 'nutrigrain', 'nature valley', 'clif bar', 'kind bar', 'granola', 'bar']
             },
             {
-                id: 'wheaties',
-                label: 'Wheaties',
-                color: '#ff9800',
-                cols: ['E'], rows: [3],
-                keywords: ['wheaties', 'shredded wheat', 'wheat cereal', 'raisin bran',
-                    'bran flakes', 'grape nuts', 'cream of wheat', 'oatmeal', 'cereal']
+                id: 'wheaties', label: 'Wheaties', color: '#ff9800', cols: ['E'], rows: [3],
+                keywords: ['wheaties', 'shredded wheat', 'wheat cereal', 'raisin bran', 'bran flakes', 'grape nuts', 'cream of wheat', 'oatmeal', 'cereal']
             },
             {
-                id: 'cheerios_foofy',
-                label: 'Cheerios & Foofy',
-                color: '#ef9a9a',
-                cols: ['E'], rows: [4],
-                keywords: ['cheerios', 'fruit loops', 'froot loops', 'frosted flakes',
-                    'cocoa puffs', 'cinnamon toast crunch', 'lucky charms', 'puff cereal',
-                    'fruity cereal', 'sugar cereal', 'rice krispies', 'corn flakes']
+                id: 'cheerios_foofy', label: 'Cheerios & Foofy', color: '#ef9a9a', cols: ['E'], rows: [4],
+                keywords: ['cheerios', 'fruit loops', 'froot loops', 'frosted flakes', 'cocoa puffs', 'cinnamon toast crunch', 'lucky charms', 'puff cereal', 'fruity cereal', 'sugar cereal', 'rice krispies', 'corn flakes']
             },
             {
-                id: 'meatz',
-                label: 'MEATZ',
-                color: '#d32f2f',
-                cols: ['F', 'G'], rows: [1],
-                keywords: ['chicken', 'beef', 'pork', 'steak', 'ground beef', 'ground turkey',
-                    'bacon', 'sausage', 'ham', 'turkey', 'lamb', 'ribs', 'brisket', 'roast',
-                    'meat', 'salmon', 'tuna', 'shrimp', 'fish', 'seafood', 'crab', 'lobster',
-                    'scallops', 'tilapia', 'cod', 'catfish', 'hot dog', 'hot dogs', 'pepperoni',
-                    'salami', 'prosciutto', 'deli meat', 'chicken breast', 'chicken thigh',
-                    'chicken wings', 'chicken wing']
+                id: 'meatz', label: 'MEATZ', color: '#d32f2f', cols: ['F', 'G'], rows: [1],
+                keywords: ['chicken', 'beef', 'pork', 'steak', 'ground beef', 'ground turkey', 'bacon', 'sausage', 'ham', 'turkey', 'lamb', 'ribs', 'brisket', 'roast', 'meat', 'salmon', 'tuna', 'shrimp', 'fish', 'seafood', 'crab', 'lobster', 'scallops', 'tilapia', 'cod', 'catfish', 'hot dog', 'hot dogs', 'pepperoni', 'salami', 'prosciutto', 'deli meat', 'chicken breast', 'chicken thigh', 'chicken wings', 'chicken wing']
             },
             {
-                id: 'canned_beans',
-                label: 'Canned Beans',
-                color: '#78909c',
-                cols: ['F'], rows: [2],
-                keywords: ['canned bean', 'canned beans', 'black bean', 'black beans', 'kidney bean',
-                    'kidney beans', 'pinto bean', 'pinto beans', 'chickpea', 'chickpeas',
-                    'garbanzo', 'lentil', 'lentils', 'refried bean', 'refried beans']
+                id: 'canned_beans', label: 'Canned Beans', color: '#78909c', cols: ['F'], rows: [2],
+                keywords: ['canned bean', 'canned beans', 'black bean', 'black beans', 'kidney bean', 'kidney beans', 'pinto bean', 'pinto beans', 'chickpea', 'chickpeas', 'garbanzo', 'lentil', 'lentils', 'refried bean', 'refried beans']
             },
             {
-                id: 'dry_pasta',
-                label: 'Dry Pasta',
-                color: '#1a237e',
-                cols: ['F'], rows: [3, 4],
-                keywords: ['spaghetti', 'penne', 'rigatoni', 'fettuccine', 'linguine', 'angel hair',
-                    'pasta', 'noodle', 'noodles', 'elbow macaroni', 'rotini', 'farfalle',
-                    'orzo', 'ditalini', 'stelline', 'lasagna noodle', 'lasagna noodles']
+                id: 'dry_pasta', label: 'Dry Pasta', color: '#1a237e', cols: ['F'], rows: [3, 4],
+                keywords: ['spaghetti', 'penne', 'rigatoni', 'fettuccine', 'linguine', 'angel hair', 'pasta', 'noodle', 'noodles', 'elbow macaroni', 'rotini', 'farfalle', 'orzo', 'ditalini', 'stelline', 'lasagna noodle', 'lasagna noodles']
             },
             {
-                id: 'kid_pasta',
-                label: 'Kid Pasta',
-                color: '#ffb74d',
-                cols: ['G'], rows: [2],
-                keywords: ['mac and cheese', 'spaghetti-os', 'spaghettios', 'kid pasta',
-                    'dino shapes', 'princess pasta', 'animal pasta', 'easy mac']
+                id: 'kid_pasta', label: 'Kid Pasta', color: '#ffb74d', cols: ['G'], rows: [2],
+                keywords: ['mac and cheese', 'spaghetti-os', 'spaghettios', 'kid pasta', 'dino shapes', 'princess pasta', 'animal pasta', 'easy mac']
             },
             {
-                id: 'canned_veggies',
-                label: 'Canned Veggies',
-                color: '#ff8a65',
-                cols: ['G'], rows: [3],
-                keywords: ['canned vegetable', 'canned vegetables', 'canned corn', 'canned peas',
-                    'canned green bean', 'canned green beans', 'canned carrot', 'canned carrots',
-                    'canned mushroom', 'canned mushrooms', 'canned spinach', 'canned mixed vegetable',
-                    'canned mixed vegetables']
+                id: 'canned_veggies', label: 'Canned Veggies', color: '#ff8a65', cols: ['G'], rows: [3],
+                keywords: ['canned vegetable', 'canned vegetables', 'canned corn', 'canned peas', 'canned green bean', 'canned green beans', 'canned carrot', 'canned carrots', 'canned mushroom', 'canned mushrooms', 'canned spinach', 'canned mixed vegetable', 'canned mixed vegetables']
             },
             {
-                id: 'foreign_things',
-                label: 'Foreign',
-                color: '#ce93d8',
-                cols: ['G'], rows: [4],
-                keywords: ['soy sauce', 'teriyaki', 'sriracha', 'curry', 'kimchi', 'sushi',
-                    'wasabi', 'hoisin', 'fish sauce', 'coconut milk', 'chickpea', 'naan',
-                    'pita', 'tahini', 'hummus', 'falafel', 'tortilla', 'salsa', 'taco',
-                    'enchilada', 'quesadilla']
+                id: 'foreign_things', label: 'Foreign', color: '#ce93d8', cols: ['G'], rows: [4],
+                keywords: ['soy sauce', 'teriyaki', 'sriracha', 'curry', 'kimchi', 'sushi', 'wasabi', 'hoisin', 'fish sauce', 'coconut milk', 'chickpea', 'naan', 'pita', 'tahini', 'hummus', 'falafel', 'tortilla', 'salsa', 'taco', 'enchilada', 'quesadilla']
             },
             {
-                id: 'nice_cheeses',
-                label: 'Nice Cheeses',
-                color: '#e91e63',
-                cols: ['H'], rows: [1],
-                keywords: ['parmesan', 'asiago', 'ricotta', 'provolone', 'gouda', 'brie',
-                    'camembert', 'pecorino', 'manchego', 'fontina', 'gruyere', 'havarti',
-                    'mascarpone', 'burrata', 'fresh mozzarella', 'mozzarella ball']
+                id: 'nice_cheeses', label: 'Nice Cheeses', color: '#e91e63', cols: ['H'], rows: [1],
+                keywords: ['parmesan', 'asiago', 'ricotta', 'provolone', 'gouda', 'brie', 'camembert', 'pecorino', 'manchego', 'fontina', 'gruyere', 'havarti', 'mascarpone', 'burrata', 'fresh mozzarella', 'mozzarella ball']
             },
             {
-                id: 'tortellini_pesto',
-                label: 'Tortellini & Pesto',
-                color: '#66bb6a',
-                cols: ['H'], rows: [2],
-                keywords: ['tortellini', 'pesto', 'ravioli', 'manicotti', 'cannelloni',
-                    'gnocchi', 'agnolotti']
+                id: 'tortellini_pesto', label: 'Tortellini & Pesto', color: '#66bb6a', cols: ['H'], rows: [2],
+                keywords: ['tortellini', 'pesto', 'ravioli', 'manicotti', 'cannelloni', 'gnocchi', 'agnolotti']
             },
             {
-                id: 'tofu_juices',
-                label: 'Tofu & Juices',
-                color: '#81c784',
-                cols: ['H'], rows: [3],
-                keywords: ['tofu', 'tempeh', 'seitan', 'veggie burger', 'plant based',
-                    'apple juice', 'grape juice', 'cranberry juice', 'grapefruit juice',
-                    'grapefruit', 'vegetable juice', 'tomato juice', 'juice', 'lemonade',
-                    'iced tea']
+                id: 'tofu_juices', label: 'Tofu & Juices', color: '#81c784', cols: ['H'], rows: [3],
+                keywords: ['tofu', 'tempeh', 'seitan', 'veggie burger', 'plant based', 'apple juice', 'grape juice', 'cranberry juice', 'grapefruit juice', 'grapefruit', 'vegetable juice', 'tomato juice', 'juice', 'lemonade', 'iced tea']
             },
             {
-                id: 'produce',
-                label: 'Produce',
-                color: '#4caf50',
-                cols: ['H'], rows: [4],
-                keywords: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'potato', 'carrot',
-                    'broccoli', 'spinach', 'kale', 'celery', 'cucumber', 'avocado', 'garlic',
-                    'ginger', 'lemon', 'lime', 'orange', 'grapes', 'strawberry', 'blueberry',
-                    'raspberry', 'cilantro', 'parsley', 'basil', 'zucchini', 'squash', 'cabbage',
-                    'cauliflower', 'corn', 'green beans', 'peas', 'asparagus', 'eggplant',
-                    'melon', 'watermelon', 'pineapple', 'mango', 'peach', 'plum', 'pear', 'kiwi',
-                    'mushroom', 'sweet potato', 'bell pepper', 'jalapeno', 'beet', 'turnip',
-                    'parsnip', 'herb', 'salad', 'sprouts', 'brussels sprouts']
+                id: 'produce', label: 'Produce', color: '#4caf50', cols: ['H'], rows: [4],
+                keywords: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'potato', 'carrot', 'broccoli', 'spinach', 'kale', 'celery', 'cucumber', 'avocado', 'garlic', 'ginger', 'lemon', 'lime', 'orange', 'grapes', 'strawberry', 'blueberry', 'raspberry', 'cilantro', 'parsley', 'basil', 'zucchini', 'squash', 'cabbage', 'cauliflower', 'corn', 'green beans', 'peas', 'asparagus', 'eggplant', 'melon', 'watermelon', 'pineapple', 'mango', 'peach', 'plum', 'pear', 'kiwi', 'mushroom', 'sweet potato', 'bell pepper', 'jalapeno', 'beet', 'turnip', 'parsnip', 'herb', 'salad', 'sprouts', 'brussels sprouts']
             }
         ];
 
         function colToNum(col) { return col.charCodeAt(0) - 65; }
 
         function getMapZoneForItem(name) {
-            const lower = name.toLowerCase().trim();
-            if (categoryOverrides[lower]) {
-                const found = MAP_ZONES.find(z => z.id === categoryOverrides[lower]);
+            // Strip out parentheses and contents using Regex so "(2)" doesn't ruin the sorting!
+            const cleanName = name.replace(/\s*\([^)]*\)/g, '').toLowerCase().trim();
+            if (categoryOverrides[cleanName]) {
+                const found = MAP_ZONES.find(z => z.id === categoryOverrides[cleanName]);
                 if (found) return found;
             }
             for (const zone of MAP_ZONES) {
                 for (const kw of zone.keywords) {
-                    if (lower.includes(kw)) return zone;
+                    if (cleanName.includes(kw)) return zone;
                 }
             }
             return null;
@@ -1763,11 +1652,11 @@
             uncatOpt.appendChild(uncatDot);
             uncatOpt.appendChild(document.createTextNode('Uncategorized'));
             uncatOpt.onclick = () => {
-                const lower = item.name.toLowerCase().trim();
+                const cleanName = item.name.replace(/\s*\([^)]*\)/g, '').toLowerCase().trim();
                 picker.remove();
                 syncMutation(state => {
                     const overrides = { ...state.categoryOverrides };
-                    delete overrides[lower];
+                    delete overrides[cleanName];
                     return { ...state, categoryOverrides: overrides };
                 });
                 const overlay = document.getElementById('map-overlay');
@@ -1776,22 +1665,23 @@
                 }
             };
             picker.appendChild(uncatOpt);
-            
+
             MAP_ZONES.forEach(z => {
                 const opt = document.createElement('div');
                 opt.style.cssText = 'padding:6px 10px;cursor:pointer;border-radius:4px;font-size:13px;display:flex;align-items:center;gap:8px';
                 opt.onmouseenter = () => opt.style.background = 'var(--light-gray)';
                 opt.onmouseleave = () => opt.style.background = '';
+                
                 const dot = document.createElement('span');
                 dot.style.cssText = `width:10px;height:10px;border-radius:2px;background:${z.color};flex-shrink:0`;
                 opt.appendChild(dot);
                 opt.appendChild(document.createTextNode(z.label));
                 opt.onclick = () => {
-                    const lower = item.name.toLowerCase().trim();
+                    const cleanName = item.name.replace(/\s*\([^)]*\)/g, '').toLowerCase().trim();
                     picker.remove();
                     syncMutation(state => ({
                         ...state,
-                        categoryOverrides: { ...state.categoryOverrides, [lower]: z.id }
+                        categoryOverrides: { ...state.categoryOverrides, [cleanName]: z.id }
                     }));
                     const overlay = document.getElementById('map-overlay');
                     if (overlay && overlay.classList.contains('open')) {
@@ -1843,7 +1733,6 @@
 
         function renderMap() {
             mapView.innerHTML = '';
-
             const scrollWrap = document.createElement('div');
             scrollWrap.className = 'map-scroll';
             const grid = document.createElement('div');
@@ -1876,7 +1765,6 @@
                         cell.className = 'map-cell map-cell-zone';
                         cell.style.background = zone.color + '30';
                         cell.style.borderColor = zone.color;
-
                         if (isFirst) {
                             const label = document.createElement('div');
                             label.className = 'map-cell-label';
@@ -1956,7 +1844,6 @@
             const S = 3;
             const set = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x * S, y * S, S, S) };
             const g = '#e5a520', d = '#c48a0e', e = '#333', w = '#fff';
-
             for (let y = 0; y < 30; y++)
                 for (let x = 0; x < 30; x++) {
                     const body = (x - 15) ** 2 + (y - 13) ** 2 < 130 && (x - 15) ** 2 + (y - 13) ** 2 > 20;
@@ -1964,15 +1851,15 @@
                     set(x, y, (x + y) % 4 === 0 ? d : g);
                 }
 
-            set(11, 10, e); set(12, 10, e); set(11, 11, e);
+            set(11, 10, e); set(12, 10, e);
+            set(11, 11, e);
             set(18, 10, e); set(19, 10, e); set(19, 11, e);
             set(11, 9, w); set(18, 9, w);
-
             set(13, 17, e); set(14, 18, e); set(15, 18, e); set(16, 17, e);
-
             for (let i = 0; i < 7; i++) set(i + 1, 27 - i, w);
             for (let i = 0; i < 6; i++) set(i + 2, 27 - i, w);
-            set(0, 27, w); set(1, 26, w);
+            set(0, 27, w);
+            set(1, 26, w);
             for (let i = 0; i < 6; i++) set(i + 23, 27 - i, w);
             for (let i = 0; i < 5; i++) set(i + 24, 27 - i, w);
         }
@@ -1981,7 +1868,6 @@
             const S = 3;
             const set = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x * S, y * S, S, S) };
             const p = '#f0a0c0', dp = '#d080a0', br = '#b07a4a', dbr = '#8a5e30', e = '#333', w = '#fff', r = '#e03030';
-
             for (let y = 0; y < 30; y++)
                 for (let x = 0; x < 30; x++) {
                     if ((x - 15) ** 2 + (y - 9) ** 2 < 100) set(x, y, (x + y) % 3 === 0 ? dp : p);
@@ -1989,18 +1875,21 @@
                         set(x, y, (x + y) % 2 === 0 ? dbr : br);
                 }
 
-            set(11, 7, e); set(12, 7, e); set(11, 8, e);
+            set(11, 7, e); set(12, 7, e);
+            set(11, 8, e);
             set(18, 7, e); set(19, 7, e); set(19, 8, e);
             set(11, 6, w); set(18, 6, w);
-
             set(13, 13, r); set(14, 12, r); set(15, 12, r); set(16, 13, r);
-            set(13, 14, r); set(14, 14, r); set(15, 14, r); set(16, 14, r);
+            set(13, 14, r); set(14, 14, r);
+            set(15, 14, r); set(16, 14, r);
             set(14, 11, r); set(15, 11, r);
-            set(13, 10, w); set(14, 10, w); set(15, 10, w); set(16, 10, w);
+            set(13, 10, w); set(14, 10, w);
+            set(15, 10, w); set(16, 10, w);
 
             for (let i = 0; i < 7; i++) set(i + 23, i + 2, w);
             for (let i = 0; i < 6; i++) set(i + 23, i + 3, w);
-            set(29, 2, w); set(28, 3, w);
+            set(29, 2, w);
+            set(28, 3, w);
         }
 
         function switchView(view) {
