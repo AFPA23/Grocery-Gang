@@ -18,6 +18,33 @@
             --border: #e0e0e0;
         }
 
+        /* --- DARK MODE STYLES ADDED HERE --- */
+        html.dark-theme {
+            filter: invert(1) hue-rotate(180deg);
+            background-color: #121212;
+        }
+        
+        /* Re-invert canvas so the pixel art doesn't look like x-rays */
+        html.dark-theme canvas {
+            filter: invert(1) hue-rotate(180deg);
+        }
+
+        .dark-mode-toggle {
+            background: none;
+            border: none;
+            font-size: 22px;
+            cursor: pointer;
+            padding: 0 10px;
+            transition: transform 0.2s;
+            margin-right: auto;
+            margin-left: 15px;
+        }
+
+        .dark-mode-toggle:hover {
+            transform: scale(1.1);
+        }
+        /* --- END DARK MODE STYLES --- */
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background-color: var(--light-gray);
@@ -906,6 +933,7 @@
 
     <header>
         <h1>Grocery Gang</h1>
+        <button id="dark-mode-toggle" class="dark-mode-toggle" title="Toggle Dark Mode">🌓</button>
         <div class="view-toggle">
             <button class="view-btn active" data-view="list">List</button>
             <button class="view-btn" data-view="map">Map</button>
@@ -955,6 +983,22 @@
         let currentView = 'list';
         let pendingWrites = 0;
         let sortableInstance = null;
+
+        /* --- ADDED DARK MODE LOGIC --- */
+        const darkModeBtn = document.getElementById('dark-mode-toggle');
+        const htmlElement = document.documentElement;
+        
+        // Load preference on startup
+        if (localStorage.getItem('darkMode') === 'true') {
+            htmlElement.classList.add('dark-theme');
+        }
+
+        // Toggle preference on click
+        darkModeBtn.addEventListener('click', () => {
+            htmlElement.classList.toggle('dark-theme');
+            localStorage.setItem('darkMode', htmlElement.classList.contains('dark-theme'));
+        });
+        /* --- END DARK MODE LOGIC --- */
 
         function currentState() {
             return { items, trips, categoryOverrides, categoryOrder };
