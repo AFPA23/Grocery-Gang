@@ -272,6 +272,8 @@
             margin-bottom: 8px;
             padding-bottom: 6px;
             border-bottom: 2px solid var(--primary-light);
+            cursor: pointer;
+            user-select: none;
         }
 
         .section-card-title {
@@ -281,6 +283,7 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin: 0;
+            flex-grow: 1;
         }
 
         .section-card-count {
@@ -324,7 +327,7 @@
             cursor: grab;
             color: var(--gray);
             font-size: 18px;
-            padding: 0 6px 0 0;
+            padding: 0 8px 0 0;
             touch-action: none;
             user-select: none;
             line-height: 1;
@@ -980,6 +983,7 @@
         let trips = JSON.parse(localStorage.getItem('trips')) || [];
         let categoryOverrides = JSON.parse(localStorage.getItem('categoryOverrides')) || {};
         let categoryOrder = JSON.parse(localStorage.getItem('categoryOrder')) || [];
+        let collapsedCategories = new Set(JSON.parse(localStorage.getItem('collapsedCategories')) || []);
         let currentView = 'list';
         let pendingWrites = 0;
         let sortableInstance = null;
@@ -1180,16 +1184,34 @@
         function createCategoryCard(label, catItems, color) {
             const card = document.createElement('div');
             card.className = 'section-card';
+            if (collapsedCategories.has(label)) {
+                card.classList.add('collapsed');
+            }
             card.dataset.category = label;
             card.style.borderTopColor = color;
 
             const header = document.createElement('div');
             header.className = 'section-card-header';
 
+            const toggleCollapse = () => {
+                const isNowCollapsed = card.classList.toggle('collapsed');
+                if (isNowCollapsed) {
+                    collapsedCategories.add(label);
+                } else {
+                    collapsedCategories.delete(label);
+                }
+                localStorage.setItem('collapsedCategories', JSON.stringify(Array.from(collapsedCategories)));
+            };
+
+            header.onclick = () => {
+                toggleCollapse();
+            };
+
             const handle = document.createElement('span');
             handle.className = 'drag-handle';
             handle.textContent = '⠿';
             handle.title = 'Drag to reorder';
+            handle.onclick = (e) => e.stopPropagation();
 
             const title = document.createElement('h3');
             title.className = 'section-card-title';
@@ -1207,7 +1229,7 @@
             collapseBtn.title = 'Toggle visibility';
             collapseBtn.onclick = (e) => {
                 e.stopPropagation();
-                card.classList.toggle('collapsed');
+                toggleCollapse();
             };
 
             const headerRight = document.createElement('div');
@@ -1971,3 +1993,4 @@
     </script>
 </body>
 </html>
+
